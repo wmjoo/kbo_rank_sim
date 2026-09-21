@@ -1235,7 +1235,10 @@ function bindSortClicks() {
 
 function bind() {
   document.querySelectorAll(".tabs button").forEach((btn) => {
-    btn.addEventListener("click", () => setTab(btn.dataset.tab));
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      setTab(btn.dataset.tab);
+    });
   });
   bindSortClicks();
 
@@ -1271,7 +1274,10 @@ function bind() {
   });
   $("collect-save").addEventListener("click", collectAndSave);
 
-  $("mc-run").addEventListener("click", startMonteCarlo);
+  $("mc-run")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    startMonteCarlo();
+  });
 
   const tab = location.hash.replace("#", "");
   setTab(["sim", "scenario", "records", "admin"].includes(tab) ? tab : "sim");
