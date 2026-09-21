@@ -125,8 +125,8 @@
           <p class="hint">
             <strong>토큰 저장</strong>은 키를 이 브라우저에 남기고, 지금 화면의 순위표와 시뮬 결과도 레포에 올립니다.
             <strong>지금 수집해서 저장</strong>은 KBO 기록실을 다시 받아
-            <code>data/daily/YYYY-MM-DD.json</code>과 <code>data/kbo.json</code>을 갱신합니다.
-            시뮬 결과는 <code>data/sim_result_기준일_횟수.json</code>로 쌓이며, 페이지는 가장 최신 기준일·가장 많은 횟수를 자동으로 보여 줍니다.
+            <code>data/kbo_standings/YYYY-MM-DD.json</code>에만 쌓습니다. 최신은 <code>index.json</code>이 가리킵니다.
+            시뮬 결과는 <code>data/montecarlo/YYYY-MM-DD_n횟수.json</code>로 쌓입니다.
           </p>
           <label class="field">
             <span>GitHub 토큰</span>
@@ -148,6 +148,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script src="js/app.js?v=21"></script>
+    <script src="js/app.js?v=23"></script>
   </body>
 </html>

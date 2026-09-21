@@ -12,21 +12,35 @@ KBO 공식 기록실 표를 가져와 잔여 시즌을 추정하는 모바일용
 - **기록실**: 팀 순위, 팀간 승패표, 팀 타격, 팀 투수 원본 표. 헤더를 누르면 정렬됩니다.
 - **도움말**: 산출 수식, GitHub 토큰, 일자별 수집.
 
-## 기준일자 (`라이브 · 2026년 9월 20일 기준`)
+## 기준일자 (`라이브 · YYYY년 M월 D일 기준`)
 
-오늘 날짜가 아닙니다. [KBO 일자별 팀 순위](https://www.koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx) HTML에서 `YYYY년 M월 D일`을 읽습니다. 그날까지 반영된 공식 순위표의 날짜입니다. 경기가 없거나 기록실이 아직 안 바뀌면 어제(또는 마지막 갱신일)로 남습니다.
+오늘 날짜가 아닙니다. [KBO 일자별 팀 순위](https://www.koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx) HTML에서 `YYYY년 M월 D일`을 읽습니다. 그날까지 반영된 공식 순위표의 날짜입니다.
 
-페이지를 열면 먼저 `data/kbo.json` 스냅샷을 보여 주고, 라이브 수집이 되면 `라이브 · …`로 바꿉니다. 실패하면 `스냅샷 · …`을 유지합니다.
+페이지를 열면 `data/kbo_standings/index.json`의 `latest` 날짜 파일을 먼저 보여 주고, 라이브 수집이 되면 `라이브 · …`로 바꿉니다.
+
+## 데이터 폴더
+
+중복 스냅샷(`kbo.json`)은 두지 않습니다. 날짜별 파일만 쌓고, 최신은 각 폴더의 `index.json`이 가리킵니다.
+
+```
+data/
+  kbo_standings/                 # KBO 공식 기록 (순위·상대전적·타격·투수)
+    index.json                   # { latest, files: ["YYYY-MM-DD", ...] }
+    2026-09-20.json
+  montecarlo/                    # 몬테카를로 결과
+    index.json                   # { files: [{ asOf, n, path }] }
+    2026-09-20_n50000.json       # 기준일_n반복횟수
+```
 
 ## 저장
 
 GitHub Pages는 정적 사이트라 브라우저에서 레포에 쓰려면 **Contents Read and write** Personal Access Token이 필요합니다. 토큰은 이 브라우저 `localStorage`에만 남습니다.
 
 - **토큰 저장**: 키 확인 후, 지금 화면의 순위표와 시뮬 결과를 레포에 올립니다.
-- **지금 수집해서 저장**: KBO 기록실을 다시 받아 `data/kbo.json`, `data/daily/YYYY-MM-DD.json`을 갱신합니다.
-- **시뮬레이션 시작**: `data/sim_result_기준일_횟수.json`과 `data/sim_latest.json`을 씁니다.
+- **지금 수집해서 저장**: `data/kbo_standings/YYYY-MM-DD.json`과 인덱스를 갱신합니다.
+- **시뮬레이션 시작**: `data/montecarlo/YYYY-MM-DD_n횟수.json`과 인덱스를 갱신합니다.
 
-다시 열면 저장된 시뮬 파일 중 **기준일이 가장 최신**이고, 같으면 **횟수가 가장 많은** 결과를 자동으로 보여 줍니다.
+시뮬레이터 탭은 인덱스의 **최신 기준일 · 최다 횟수** 파일을 바로 보여 줍니다.
 
 ## 로컬
 

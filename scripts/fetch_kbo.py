@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KBO 공식 기록실 표를 가져와 data/kbo.json 과 data/daily/YYYY-MM-DD.json 으로 저장한다."""
+"""KBO 공식 기록실 표를 가져와 data/kbo_standings/YYYY-MM-DD.json 으로 저장한다."""
 
 from __future__ import annotations
 
@@ -117,20 +117,28 @@ def collect() -> dict:
 
 def save(payload: dict) -> list[Path]:
     root = Path(__file__).resolve().parents[1] / "data"
-    root.mkdir(parents=True, exist_ok=True)
-    daily_dir = root / "daily"
-    daily_dir.mkdir(parents=True, exist_ok=True)
+    standings_dir = root / "kbo_standings"
+    standings_dir.mkdir(parents=True, exist_ok=True)
+
+    as_of = payload.get("asOf")
+    if not as_of:
+        raise RuntimeError("기준 일자를 읽지 못했습니다.")
 
     text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    latest = root / "kbo.json"
-    latest.write_text(text, encoding="utf-8")
-    saved = [latest]
+    daily = standings_dir / f"{as_of}.json"
+    daily.write_text(text, encoding="utf-8")
 
-    if payload.get("asOf"):
-        daily = daily_dir / f"{payload['asOf']}.json"
-        daily.write_text(text, encoding="utf-8")
-        saved.append(daily)
-    return saved
+    index_path = standings_dir / "index.json"
+    index = {"latest": as_of, "files": [as_of]}
+    if index_path.exists():
+        try:
+            prev = json.loads(index_path.read_text(encoding="utf-8"))
+            files = sorted(set(prev.get("files") or []) | {as_of})
+            index = {"latest": files[-1], "files": files}
+        except json.JSONDecodeError:
+            pass
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return [daily, index_path]
 
 
 def main() -> None:

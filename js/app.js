@@ -21,6 +21,12 @@ const MC_METRICS = [
   { key: "versus", label: "상대전적", prior: "상대별 승률", expected: "versusFinalPct" },
 ];
 const REPO = { owner: "wmjoo", name: "kbo_rank_sim", branch: "main" };
+const DATA = {
+  standingsIndex: "data/kbo_standings/index.json",
+  standingsFile: (asOf) => `data/kbo_standings/${asOf}.json`,
+  simIndex: "data/montecarlo/index.json",
+  simFile: (asOf, n) => `data/montecarlo/${asOf}_n${n}.json`,
+};
 const TOKEN_KEY = "kbo.githubToken";
 
 const SOURCES = {
@@ -609,9 +615,12 @@ async function importLive() {
 }
 
 async function loadSnapshot() {
-  const res = await fetch("data/kbo.json", { cache: "no-store" });
-  if (!res.ok) throw new Error("snapshot missing");
-  return res.json();
+  const index = await fetchJson(DATA.standingsIndex);
+  const asOf = index?.latest || [...(index?.files || [])].sort().at(-1);
+  if (!asOf) throw new Error("snapshot missing");
+  const data = await fetchJson(DATA.standingsFile(asOf));
+  if (!data) throw new Error("snapshot missing");
+  return data;
 }
 
 function applyData(data, source) {
@@ -682,7 +691,7 @@ async function githubJson(url, token, options = {}) {
 
 async function verifyToken(token) {
   await githubJson(
-    `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/data/kbo.json?ref=${REPO.branch}`,
+    `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${DATA.standingsIndex}?ref=${REPO.branch}`,
     token
   );
 }
@@ -1005,14 +1014,22 @@ function renderMcResults(payload) {
 }
 
 function simResultPath(payload) {
-  const asOfKey = String(payload.asOf || payload.ranDate || "").replaceAll("-", "");
-  return `data/sim_result_${asOfKey}_${payload.n}.json`;
+  const asOf = payload.asOf || payload.ranDate;
+  return DATA.simFile(asOf, payload.n);
 }
 
 async function saveStandings(token, data) {
   const text = `${JSON.stringify(data, null, 2)}\n`;
-  await putRepoFile(token, `data/daily/${data.asOf}.json`, text, `${data.asOf} KBO 기록 수집`);
-  await putRepoFile(token, "data/kbo.json", text, `${data.asOf} KBO 최신 스냅샷`);
+  await putRepoFile(token, DATA.standingsFile(data.asOf), text, `${data.asOf} KBO 순위표`);
+  const index = (await fetchJson(DATA.standingsIndex)) || { latest: data.asOf, files: [] };
+  const files = [...new Set([...(index.files || []), data.asOf])].sort();
+  const latest = files[files.length - 1];
+  await putRepoFile(
+    token,
+    DATA.standingsIndex,
+    `${JSON.stringify({ latest, files }, null, 2)}\n`,
+    "KBO 순위표 인덱스 갱신"
+  );
 }
 
 async function saveMcResult(payload, token = getToken()) {
@@ -1023,11 +1040,10 @@ async function saveMcResult(payload, token = getToken()) {
   const text = `${JSON.stringify(payload, null, 2)}\n`;
   const path = simResultPath(payload);
   await putRepoFile(token, path, text, `${payload.asOf || payload.ranDate} 몬테카를로 ${payload.n}회`);
-  await putRepoFile(token, "data/sim_latest.json", text, `${payload.asOf || payload.ranDate} 몬테카를로 최신`);
-  const index = (await fetchJson("data/sim_index.json")) || { files: [] };
+  const index = (await fetchJson(DATA.simIndex)) || { files: [] };
   const entry = { asOf: payload.asOf || payload.ranDate, n: payload.n, path };
   index.files = [...(index.files || []).filter((f) => f.path !== path), entry];
-  await putRepoFile(token, "data/sim_index.json", `${JSON.stringify(index, null, 2)}\n`, "시뮬 결과 인덱스 갱신");
+  await putRepoFile(token, DATA.simIndex, `${JSON.stringify(index, null, 2)}\n`, "몬테카를로 인덱스 갱신");
   return true;
 }
 
@@ -1061,17 +1077,14 @@ async function fetchJson(path) {
 }
 
 async function fetchSimPayloads() {
-  const index = await fetchJson("data/sim_index.json");
+  const index = await fetchJson(DATA.simIndex);
   const files = Array.isArray(index?.files) ? index.files : [];
   const bestMeta = [...files].sort(
     (a, b) => String(b.asOf || "").localeCompare(String(a.asOf || "")) || Number(b.n || 0) - Number(a.n || 0)
   )[0];
-  if (bestMeta?.path) {
-    const payload = await fetchJson(bestMeta.path);
-    if (payload?.results) return [payload];
-  }
-  const latest = await fetchJson("data/sim_latest.json");
-  return latest?.results ? [latest] : [];
+  if (!bestMeta?.path) return [];
+  const payload = await fetchJson(bestMeta.path);
+  return payload?.results ? [payload] : [];
 }
 
 async function loadLatestMc() {
@@ -1151,27 +1164,18 @@ async function collectAndSave() {
 
 async function loadDailyList() {
   const box = $("daily-list");
-  const token = getToken();
-  const url = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/data/daily?ref=${REPO.branch}`;
   try {
-    const res = await fetch(url, token ? { headers: ghHeaders(token) } : {});
-    if (res.status === 404) {
-      box.innerHTML = `<p class="empty">아직 레포에 저장된 일자가 없습니다. 위에서 한 번 수집하면 생깁니다.</p>`;
-      return;
-    }
-    const files = await res.json();
-    if (!Array.isArray(files)) throw new Error(files.message || "목록을 읽지 못했습니다.");
-    const dates = files
-      .filter((f) => f.name.endsWith(".json"))
-      .map((f) => f.name.replace(".json", ""))
-      .sort()
-      .reverse();
+    const index = await fetchJson(DATA.standingsIndex);
+    const dates = [...(index?.files || [])].sort().reverse();
     if (!dates.length) {
       box.innerHTML = `<p class="empty">아직 저장된 일자가 없습니다.</p>`;
       return;
     }
     box.innerHTML = `<div class="daily-list">${dates
-      .map((d) => `<a href="https://github.com/${REPO.owner}/${REPO.name}/blob/${REPO.branch}/data/daily/${d}.json" target="_blank" rel="noreferrer">${d}</a>`)
+      .map(
+        (d) =>
+          `<a href="https://github.com/${REPO.owner}/${REPO.name}/blob/${REPO.branch}/${DATA.standingsFile(d)}" target="_blank" rel="noreferrer">${d}</a>`
+      )
       .join("")}</div>`;
   } catch (err) {
     box.innerHTML = `<p class="empty">${escapeHtml(err.message)}</p>`;

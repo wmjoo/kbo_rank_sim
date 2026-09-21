@@ -3,7 +3,7 @@
     {
       "asOf": "2026-09-20",
       "n": 50000,
-      "path": "data/sim_result_20260920_50000.json"
+      "path": "data/montecarlo/2026-09-20_n50000.json"
     }
   ]
 }
