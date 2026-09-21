@@ -71,10 +71,11 @@ body {
   background: transparent;
   color: #c7c1b2;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  padding: 8px 0 7px;
+  padding: 8px 2px 7px;
   border-bottom: 2px solid transparent;
+  letter-spacing: -0.04em;
 }
 
 .tabs button.active {
@@ -185,12 +186,12 @@ table.slim thead th.sorted::after {
 
 .ladder {
   display: grid;
-  grid-template-columns: 36px 1fr 1fr 1fr;
-  gap: 4px;
+  grid-template-columns: 32px 1fr 1fr 1fr 1fr;
+  gap: 3px;
   background: var(--sheet);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 6px 6px 8px;
+  padding: 4px 4px 6px;
   overflow-x: auto;
 }
 
@@ -223,13 +224,15 @@ table.slim thead th.sorted::after {
   left: 0;
   right: 0;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--navy);
+  border-left: 2px solid var(--navy);
   background: #fffdf8;
-  border-radius: 3px;
-  padding: 2px 3px;
-  font-size: 10px;
-  line-height: 1.15;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-size: 9px;
+  line-height: 14px;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .ladder-cell.focus {
@@ -237,10 +240,6 @@ table.slim thead th.sorted::after {
   border-color: var(--gold);
   border-left-color: #c30452;
   font-weight: 800;
-}
-
-.ladder-cell b {
-  display: block;
 }
 
 .daily-list {
@@ -263,9 +262,33 @@ table.slim thead th.sorted::after {
 }
 
 .hint {
-  margin: 0 0 6px;
-  font-size: 11px;
+  margin: 0 0 4px;
+  font-size: 10px;
   color: var(--muted);
+}
+
+.legend {
+  margin: 0 0 5px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.section h3 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+}
+
+.formula {
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .table-wrap {
@@ -278,16 +301,15 @@ table.slim thead th.sorted::after {
 
 table.slim {
   width: max-content;
-  min-width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
-  line-height: 1.15;
+  font-size: 10px;
+  line-height: 1.1;
   table-layout: auto;
 }
 
 table.slim th,
 table.slim td {
-  padding: 3px 4px;
+  padding: 2px 2px;
   border-bottom: 1px solid #eee8da;
   white-space: nowrap;
   text-align: center;
@@ -296,11 +318,12 @@ table.slim td {
 
 table.slim thead th {
   background: #efe8d8;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   color: #4d5348;
   position: sticky;
   top: 0;
+  letter-spacing: -0.02em;
 }
 
 table.slim td.team,
@@ -312,8 +335,8 @@ table.slim th.rank {
 
 table.slim td.rank,
 table.slim th.rank {
-  width: 22px;
-  padding-left: 6px;
+  width: 16px;
+  padding-left: 3px;
 }
 
 table.slim .sticky-1,
@@ -334,11 +357,7 @@ table.slim .sticky-1 {
 }
 
 table.slim .sticky-2 {
-  left: 22px;
-}
-
-table.slim tbody tr.cut {
-  border-bottom: 2px solid var(--gold);
+  left: 16px;
 }
 
 table.slim tbody tr.total {
@@ -357,13 +376,13 @@ table.slim tbody tr.moved-down td.rank {
 .team-cell {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   font-weight: 800;
 }
 
 .dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -455,9 +474,5 @@ table.slim tbody tr.moved-down td.rank {
   .tabs {
     max-width: 980px;
     margin: 0 auto;
-  }
-
-  table.slim {
-    font-size: 12px;
   }
 }

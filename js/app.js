@@ -13,7 +13,7 @@ const TEAM_COLORS = {
 
 const SEASON_GAMES = 144;
 const FOCUS_TEAM = "LG";
-const RACE_TEAMS = ["삼성", "LG", "KIA"];
+const RACE_TEAMS = ["KT", "삼성", "LG", "KIA"];
 const REPO = { owner: "wmjoo", name: "kbo_rank_sim", branch: "main" };
 const TOKEN_KEY = "kbo.githubToken";
 
@@ -37,7 +37,6 @@ const state = {
     rank: { col: 0, dir: "asc" },
     hitter: { col: 0, dir: "asc" },
     pitcher: { col: 0, dir: "asc" },
-    lgCombo: { key: "extraW", dir: "desc" },
   },
 };
 
@@ -265,11 +264,11 @@ function renderSim() {
     ["경기", "g", ""],
     ["승률", "pct", ""],
     ["잔여", "remain", ""],
-    ["피타고리안", "pyth", ""],
-    ["이항 최종승률", "binomFinalPct", ""],
-    ["이항 최종순위", "binomRank", ""],
-    ["피타 최종승률", "pythFinalPct", ""],
-    ["피타 최종순위", "pythRank", ""],
+    ["피타", "pyth", ""],
+    ["b_wp", "binomFinalPct", ""],
+    ["b_rk", "binomRank", ""],
+    ["p_wp", "pythFinalPct", ""],
+    ["p_rk", "pythRank", ""],
   ];
 
   const head = cols
@@ -285,8 +284,7 @@ function renderSim() {
 
   const body = sorted
     .map((t) => {
-      const cut = t.rank === 5 ? "cut" : "";
-      return `<tr class="${cut}">
+      return `<tr>
         <td class="rank sticky-1">${t.rank}</td>
         <td class="team sticky-2">${teamDot(t.name)}</td>
         <td>${t.g}</td>
@@ -302,7 +300,6 @@ function renderSim() {
     .join("");
 
   $("sim-table").innerHTML = `<div class="table-wrap"><table class="slim" data-table="sim"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-  renderLgCombo();
   renderLadder();
 }
 
@@ -318,42 +315,10 @@ function remainOutcomes(team) {
   return out;
 }
 
-function renderLgCombo() {
-  const team = state.sim.find((t) => t.name === FOCUS_TEAM);
-  const title = $("lg-combo-title");
-  if (!team) {
-    $("lg-combo-table").innerHTML = `<p class="empty">LG 데이터를 찾지 못했습니다.</p>`;
-    return;
-  }
-  title.textContent = `LG Twins 잔여 ${team.remain}경기 승패 조합`;
-  const sort = state.sorts.lgCombo;
-  const rows = sortRows(remainOutcomes(team), sort.key, sort.dir, (r, key) => r[key]);
-  const cols = [
-    ["잔여", "extraW"],
-    ["최종승", "fw"],
-    ["최종패", "fl"],
-    ["최종승률", "pct"],
-  ];
-  const head = cols
-    .map(([label, key]) => th(label, { sortKey: key, sorted: sort.key === key, dir: sort.dir }))
-    .join("");
-  const body = rows
-    .map(
-      (r) => `<tr>
-        <td>${r.extraW}-${r.extraL}</td>
-        <td>${r.fw}</td>
-        <td>${r.fl}</td>
-        <td>${formatPct(r.pct)}</td>
-      </tr>`
-    )
-    .join("");
-  $("lg-combo-table").innerHTML = `<div class="table-wrap"><table class="slim" data-table="lgCombo"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-}
-
 function renderLadder() {
   const teams = RACE_TEAMS.map((name) => state.sim.find((t) => t.name === name)).filter(Boolean);
-  if (teams.length < 3) {
-    $("race-ladder").innerHTML = `<p class="empty">삼성·LG·KIA 순위 데이터가 부족합니다.</p>`;
+  if (teams.length < 4) {
+    $("race-ladder").innerHTML = `<p class="empty">KT·삼성·LG·KIA 순위 데이터가 부족합니다.</p>`;
     return;
   }
 
@@ -366,8 +331,9 @@ function renderLadder() {
     c.outcomes.length > 1 ? Math.abs(c.outcomes[0].pct - c.outcomes[1].pct) : 0.01
   );
   const minStep = Math.min(...steps);
-  const pxPerWp = 26 / minStep;
-  const height = range * pxPerWp + 26;
+  const rowH = 16;
+  const pxPerWp = rowH / minStep;
+  const height = range * pxPerWp + rowH;
 
   const ticks = [];
   const tickStep = Math.max(0.01, Math.round((range / 6) * 100) / 100);
@@ -388,8 +354,8 @@ function renderLadder() {
         .map((o) => {
           const top = (maxP - o.pct) * pxPerWp;
           const focus = col.team.name === FOCUS_TEAM ? "focus" : "";
-          return `<div class="ladder-cell ${focus}" style="top:${top}px;height:${Math.max(22, minStep * pxPerWp - 2)}px">
-            <b>${o.extraW}-${o.extraL}</b>${formatPct(o.pct)}
+          return `<div class="ladder-cell ${focus}" style="top:${top}px;height:${rowH - 2}px">
+            ${o.extraW}-${o.extraL} | ${formatPct(o.pct)}
           </div>`;
         })
         .join("");

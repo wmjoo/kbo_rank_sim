@@ -16,24 +16,19 @@
       <nav class="tabs">
         <button type="button" data-tab="sim" class="active">시뮬레이터</button>
         <button type="button" data-tab="records">기록실</button>
-        <button type="button" data-tab="admin">관리자</button>
+        <button type="button" data-tab="admin">도움말&amp;관리자</button>
       </nav>
     </header>
 
     <main>
       <section id="panel-sim" class="panel active">
-        <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 이항 추정합니다. 헤더를 누르면 정렬됩니다.</p>
+        <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 추정합니다. 헤더를 누르면 정렬됩니다.</p>
+        <p class="legend">b_wp 이항 최종승률 · b_rk 이항 최종순위 · p_wp 피타 최종승률 · p_rk 피타 최종순위</p>
         <div id="sim-table"></div>
 
         <article class="section">
-          <h2 id="lg-combo-title">LG Twins 잔여 승패 조합</h2>
-          <p class="hint">무승부 없이 잔여 전승부터 전패까지. 경기가 끝나면 잔여 수가 줄어 표가 갱신됩니다.</p>
-          <div id="lg-combo-table"></div>
-        </article>
-
-        <article class="section">
-          <h2>삼성 · LG · KIA 최종승률 사다리</h2>
-          <p class="hint">세 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
+          <h2>KT · 삼성 · LG · KIA 최종승률 사다리</h2>
+          <p class="hint">네 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
           <div id="race-ladder"></div>
         </article>
       </section>
@@ -63,6 +58,27 @@
       </section>
 
       <section id="panel-admin" class="panel">
+        <article class="section">
+          <h2>산출 기준</h2>
+          <p class="hint">시즌은 144경기로 보고, 잔여 = 144 − 경기입니다. 잔여 경기는 무승부가 없다고 가정합니다. 현재 승률은 KBO와 같이 승 / (승 + 패)입니다.</p>
+
+          <h3>피타 · p_wp · p_rk</h3>
+          <p class="hint">빌 제임스 피타고리안 기대승률입니다. 득점(RS)은 팀 타격 표의 R, 실점(RA)은 팀 투수 표의 R입니다. 지수는 2를 씁니다.</p>
+          <p class="formula">피타 = RS² / (RS² + RA²)</p>
+          <p class="hint">잔여 경기에서 이 비율만큼 이긴다고 보고, 기대 추가승 = 잔여 × 피타 를 현재 승수에 더합니다. 분모는 현재 승패와 잔여를 더한 결정경기 수입니다. 무승부는 승률 분모에 넣지 않습니다.</p>
+          <p class="formula">p_wp = (승 + 잔여 × 피타) / (승 + 패 + 잔여)</p>
+          <p class="hint">p_rk는 10개 팀을 이 p_wp 내림차순으로 매긴 예상 순위입니다. 같으면 현재 승이 많은 팀, 그다음 패가 적은 팀입니다.</p>
+
+          <h3>b_wp · b_rk</h3>
+          <p class="hint">잔여 n경기를 현재 승률 p의 이항분포로 봅니다. 기대값이 아니라 가장 가능성 높은 잔여 승수(최빈값, 반올림)를 쓰고, 그때의 최종 승률을 계산합니다.</p>
+          <p class="formula">잔여승* = round(잔여 × 현재승률)</p>
+          <p class="formula">b_wp = (승 + 잔여승*) / (승 + 패 + 잔여)</p>
+          <p class="hint">b_rk는 10개 팀을 이 b_wp 내림차순으로 매긴 예상 순위입니다. 동률 처리는 p_rk와 같습니다.</p>
+
+          <h3>KT · 삼성 · LG · KIA 사다리</h3>
+          <p class="hint">무승부 없이 잔여 w승 (잔여−w)패일 때 최종승률 = (현재승 + w) / (현재승 + 현재패 + 잔여) 입니다. 사다리는 이 최종승률을 세로 높이로 맞춰 네 팀을 비교합니다. 경기가 진행되면 잔여 수가 줄어 표가 갱신됩니다.</p>
+        </article>
+
         <article class="section">
           <h2>일자별 수집</h2>
           <p class="hint">
