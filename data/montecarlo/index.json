@@ -2,6 +2,11 @@
   "files": [
     {
       "asOf": "2026-09-20",
+      "n": 10000,
+      "path": "data/montecarlo/2026-09-20_n10000.json"
+    },
+    {
+      "asOf": "2026-09-20",
       "n": 50000,
       "path": "data/montecarlo/2026-09-20_n50000.json"
     }
