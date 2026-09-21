@@ -1021,8 +1021,13 @@ async function saveMcResult(payload, token = getToken()) {
     return false;
   }
   const text = `${JSON.stringify(payload, null, 2)}\n`;
-  await putRepoFile(token, simResultPath(payload), text, `${payload.asOf || payload.ranDate} 몬테카를로 ${payload.n}회`);
+  const path = simResultPath(payload);
+  await putRepoFile(token, path, text, `${payload.asOf || payload.ranDate} 몬테카를로 ${payload.n}회`);
   await putRepoFile(token, "data/sim_latest.json", text, `${payload.asOf || payload.ranDate} 몬테카를로 최신`);
+  const index = (await fetchJson("data/sim_index.json")) || { files: [] };
+  const entry = { asOf: payload.asOf || payload.ranDate, n: payload.n, path };
+  index.files = [...(index.files || []).filter((f) => f.path !== path), entry];
+  await putRepoFile(token, "data/sim_index.json", `${JSON.stringify(index, null, 2)}\n`, "시뮬 결과 인덱스 갱신");
   return true;
 }
 
@@ -1045,37 +1050,28 @@ function pickBestMc(payloads) {
     .sort((a, b) => String(b.asOf || "").localeCompare(String(a.asOf || "")) || Number(b.n || 0) - Number(a.n || 0))[0];
 }
 
-async function fetchSimPayloads() {
-  const found = [];
-  const token = getToken();
+async function fetchJson(path) {
   try {
-    const url = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/data?ref=${REPO.branch}`;
-    const res = await fetch(url, token ? { headers: ghHeaders(token) } : {});
-    const files = res.ok ? await res.json() : [];
-    if (Array.isArray(files)) {
-      const sims = files.filter((f) => f.name === "sim_latest.json" || /^sim_result_/.test(f.name));
-      for (const file of sims) {
-        try {
-          const src = file.download_url || `data/${file.name}`;
-          const body = await fetch(src, { cache: "no-store" });
-          if (body.ok) found.push(await body.json());
-        } catch {
-          /* skip one file */
-        }
-      }
-    }
+    const res = await fetch(path, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json();
   } catch {
-    /* fall through */
+    return null;
   }
-  if (!found.length) {
-    try {
-      const res = await fetch("data/sim_latest.json", { cache: "no-store" });
-      if (res.ok) found.push(await res.json());
-    } catch {
-      /* none */
-    }
+}
+
+async function fetchSimPayloads() {
+  const index = await fetchJson("data/sim_index.json");
+  const files = Array.isArray(index?.files) ? index.files : [];
+  const bestMeta = [...files].sort(
+    (a, b) => String(b.asOf || "").localeCompare(String(a.asOf || "")) || Number(b.n || 0) - Number(a.n || 0)
+  )[0];
+  if (bestMeta?.path) {
+    const payload = await fetchJson(bestMeta.path);
+    if (payload?.results) return [payload];
   }
-  return found;
+  const latest = await fetchJson("data/sim_latest.json");
+  return latest?.results ? [latest] : [];
 }
 
 async function loadLatestMc() {
@@ -1286,13 +1282,14 @@ function bind() {
 async function boot() {
   const snapshot = await loadSnapshot();
   applyData(snapshot, "snapshot");
+  const mcReady = loadLatestMc();
   try {
     const live = await importLive();
     applyData(live, "live");
   } catch {
     setStatus("snap", `스냅샷 · ${snapshot.asOfLabel || ""}`);
   }
-  await loadLatestMc();
+  await mcReady;
   renderHelpMath();
   setTimeout(renderHelpMath, 0);
   setTimeout(renderHelpMath, 400);
