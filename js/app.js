@@ -24,10 +24,59 @@ const SOURCES = {
   pitcher: "https://www.koreabaseball.com/Record/Team/Pitcher/Basic1.aspx",
 };
 
-const PROXY_PREFIXES = [
-  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
+function getToken() {
+  return ($("gh-token").value || localStorage.getItem(TOKEN_KEY) || "").replace(/\s+/g, "");
+}
+
+function fetchTimeout(ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return { signal: ctrl.signal, clear: () => clearTimeout(timer) };
+}
+
+async function fetchViaProxy(url) {
+  const attempts = [
+    async () => {
+      const t = fetchTimeout(15000);
+      try {
+        const res = await fetch(`https://r.jina.ai/${url}`, {
+          cache: "no-store",
+          signal: t.signal,
+          headers: { "X-Return-Format": "html" },
+        });
+        if (!res.ok) throw new Error(`jina ${res.status}`);
+        return res.text();
+      } finally {
+        t.clear();
+      }
+    },
+    async () => {
+      const t = fetchTimeout(12000);
+      try {
+        const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
+          cache: "no-store",
+          signal: t.signal,
+        });
+        if (!res.ok) throw new Error(`allorigins ${res.status}`);
+        return res.text();
+      } finally {
+        t.clear();
+      }
+    },
+  ];
+  let lastError;
+  for (const run of attempts) {
+    try {
+      const html = await run();
+      const tables = parseAllTables(html);
+      if (!tables.length) throw new Error("empty table");
+      return { html, tables, rows: tables[0] };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
 
 const state = {
   data: null,
@@ -517,23 +566,6 @@ function parseAllTables(html) {
   return tables.map(tableRows).filter((rows) => rows.length >= 2);
 }
 
-async function fetchViaProxy(url) {
-  let lastError;
-  for (const make of PROXY_PREFIXES) {
-    try {
-      const res = await fetch(make(url), { cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      const html = await res.text();
-      const tables = parseAllTables(html);
-      if (!tables.length) throw new Error("empty table");
-      return { html, tables, rows: tables[0] };
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
-}
-
 function pickH2h(tables) {
   return (
     (tables || []).find((t) => t[0] && t[0].some((c) => /승-패|승패/.test(String(c)))) ||
@@ -610,14 +642,43 @@ function ghHeaders(token) {
   };
 }
 
+function explainAdminError(err, step) {
+  const m = String(err.message || err);
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m)) {
+    return step === "github"
+      ? "GitHub에 연결하지 못했습니다. 광고차단이 api.github.com을 막는지 확인하세요."
+      : "KBO 기록실을 가져오지 못했습니다. 잠시 후 다시 눌러보세요.";
+  }
+  if (/Bad credentials/i.test(m)) return "토큰이 거부됐습니다. 만료됐거나 복사가 잘못된 것입니다. 다시 발급하세요.";
+  if (/Resource not accessible/i.test(m)) return "토큰에 Contents Read and write 권한이 없습니다.";
+  if (/Not Found/i.test(m)) return "이 토큰으로 레포를 찾지 못했습니다. 저장소를 wmjoo/kbo_rank_sim 으로 선택했는지 확인하세요.";
+  return m;
+}
+
 async function githubJson(url, token, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { ...ghHeaders(token), ...(options.headers || {}) },
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.message || `GitHub ${res.status}`);
-  return body;
+  const t = fetchTimeout(15000);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: t.signal,
+      headers: { ...ghHeaders(token), ...(options.headers || {}) },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || `GitHub ${res.status}`);
+    return body;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("GitHub 요청이 시간 초과됐습니다.");
+    throw err;
+  } finally {
+    t.clear();
+  }
+}
+
+async function verifyToken(token) {
+  await githubJson(
+    `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/data/kbo.json?ref=${REPO.branch}`,
+    token
+  );
 }
 
 async function putRepoFile(token, path, content, message) {
@@ -646,31 +707,38 @@ function adminLog(text) {
   $("admin-log").textContent = text;
 }
 
-function getToken() {
-  return ($("gh-token").value || localStorage.getItem(TOKEN_KEY) || "").trim();
-}
-
 async function collectAndSave() {
   const token = getToken();
   if (!token) {
-    adminLog("repo 권한 토큰을 입력한 뒤 저장하세요.");
+    adminLog("Contents 쓰기 권한 토큰을 입력한 뒤 저장하세요.");
     return;
   }
   const btn = $("collect-save");
   btn.disabled = true;
-  adminLog("KBO 기록실에서 수집하는 중…");
   try {
-    const data = await importLive();
+    adminLog("토큰 확인 중…");
+    await verifyToken(token);
+    adminLog("KBO 기록실에서 수집하는 중…");
+    let data;
+    let live = true;
+    try {
+      data = await importLive();
+    } catch (err) {
+      if (!state.data?.rank) throw err;
+      data = state.data;
+      live = false;
+      adminLog(`라이브 수집 실패(${explainAdminError(err, "kbo")}). 현재 스냅샷으로 저장합니다…`);
+    }
     if (!data.asOf) throw new Error("기준 일자를 읽지 못했습니다.");
     const text = `${JSON.stringify(data, null, 2)}\n`;
-    adminLog(`${data.asOfLabel} 표를 레포에 저장하는 중…`);
+    adminLog(`${data.asOfLabel || data.asOf} 표를 레포에 저장하는 중…`);
     await putRepoFile(token, `data/daily/${data.asOf}.json`, text, `${data.asOf} KBO 기록 수집`);
     await putRepoFile(token, "data/kbo.json", text, `${data.asOf} KBO 최신 스냅샷`);
-    applyData(data, "live");
-    adminLog(`${data.asOf} 저장 완료. Pages가 다시 빌드되면 스냅샷이 갱신됩니다.`);
+    applyData(data, live ? "live" : "snapshot");
+    adminLog(`${data.asOf} 저장 완료${live ? "" : " (스냅샷)"}. Pages가 다시 빌드되면 갱신됩니다.`);
     await loadDailyList();
   } catch (err) {
-    adminLog(`저장 실패: ${err.message}`);
+    adminLog(`저장 실패: ${explainAdminError(err, "github")}`);
   } finally {
     btn.disabled = false;
   }
@@ -765,14 +833,21 @@ function bind() {
   const saved = localStorage.getItem(TOKEN_KEY) || "";
   if (saved) $("gh-token").value = saved;
 
-  $("save-token").addEventListener("click", () => {
-    const token = $("gh-token").value.trim();
+  $("save-token").addEventListener("click", async () => {
+    const token = $("gh-token").value.replace(/\s+/g, "");
+    $("gh-token").value = token;
     if (!token) {
       adminLog("토큰이 비어 있습니다.");
       return;
     }
     localStorage.setItem(TOKEN_KEY, token);
-    adminLog("이 브라우저에 토큰을 저장했습니다.");
+    adminLog("토큰을 저장했습니다. GitHub 권한을 확인하는 중…");
+    try {
+      await verifyToken(token);
+      adminLog("토큰 확인됨. Contents 읽기가 됩니다. 이제 수집 버튼을 누르세요.");
+    } catch (err) {
+      adminLog(`토큰은 저장됐지만 확인 실패: ${explainAdminError(err, "github")}`);
+    }
   });
   $("clear-token").addEventListener("click", () => {
     localStorage.removeItem(TOKEN_KEY);
