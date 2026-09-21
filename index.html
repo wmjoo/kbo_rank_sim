@@ -16,13 +16,33 @@
       </div>
       <nav class="tabs">
         <button type="button" data-tab="sim" class="active">시뮬레이터</button>
+        <button type="button" data-tab="scenario">시나리오</button>
         <button type="button" data-tab="records">기록실</button>
-        <button type="button" data-tab="admin">도움말&amp;관리자</button>
+        <button type="button" data-tab="admin">도움말</button>
       </nav>
     </header>
 
     <main>
       <section id="panel-sim" class="panel active">
+        <p class="hint">잔여 각 경기를 세 사전확률로 독립 추출합니다. 맞대결 상관은 넣지 않습니다. 1~10위 확률은 소수점 한 자리, 0.0%는 - 입니다.</p>
+        <div class="mc-toolbar">
+          <label class="field inline">
+            <span>반복</span>
+            <select id="mc-n">
+              <option value="1000">1,000</option>
+              <option value="5000">5,000</option>
+              <option value="10000" selected>10,000</option>
+              <option value="25000">25,000</option>
+              <option value="50000">50,000</option>
+            </select>
+          </label>
+          <button id="mc-run" class="btn btn-primary" type="button">시뮬레이션 시작</button>
+        </div>
+        <p id="mc-log" class="meta admin-log"></p>
+        <div id="mc-results"></div>
+      </section>
+
+      <section id="panel-scenario" class="panel">
         <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 추정합니다. 헤더를 누르면 정렬됩니다.</p>
         <p class="legend">b_wp 이항 최종승률 · b_rk 이항 최종순위 · p_wp 피타 최종승률 · p_rk 피타 최종순위 · v_wp 상대전적 최종승률 · v_rk 상대전적 최종순위</p>
         <div id="sim-table"></div>
@@ -96,15 +116,17 @@
           </div>
           <h3>사다리 · 잔여 대진</h3>
           <p class="hint">사다리 최종승률 = (현재승 + w) / (현재승 + 현재패 + 잔여). 잔여 대진은 16 − (승+패+무). 상대전적 승률은 승 / (승+패). KT·삼성·LG·KIA 표 순서는 그날 순위입니다.</p>
+          <h3>몬테카를로</h3>
+          <p class="hint">잔여 각 경기를 독립 베르누이로 뽑습니다. 이항은 현재 승률, 피타는 피타고리안, 상대전적은 상대별 승률(없으면 현재 승률). P(k위) = 해당 순위 횟수 / N. 표는 기대승률 내림차순, 1~10위. 같은 최종승률은 승·패·팀명으로 순위를 가릅니다.</p>
         </article>
 
         <article class="section">
           <h2>일자별 수집</h2>
           <p class="hint">
-            버튼을 누르면 KBO 기록실 표를 가져와 레포의
-            <code>data/daily/YYYY-MM-DD.json</code>에 저장하고, 최신 스냅샷
-            <code>data/kbo.json</code>도 갱신합니다. GitHub Pages는 정적 사이트라 저장하려면
-            <strong>repo 권한이 있는 Personal Access Token</strong>이 필요합니다. 토큰은 이 브라우저에만 저장됩니다.
+            <strong>토큰 저장</strong>은 키를 이 브라우저에 남기고, 지금 화면의 순위표와 시뮬 결과도 레포에 올립니다.
+            <strong>지금 수집해서 저장</strong>은 KBO 기록실을 다시 받아
+            <code>data/daily/YYYY-MM-DD.json</code>과 <code>data/kbo.json</code>을 갱신합니다.
+            시뮬 결과는 <code>data/sim_result_기준일_횟수.json</code>로 쌓이며, 페이지는 가장 최신 기준일·가장 많은 횟수를 자동으로 보여 줍니다.
           </p>
           <label class="field">
             <span>GitHub 토큰</span>

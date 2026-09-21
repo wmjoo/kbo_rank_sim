@@ -15,6 +15,11 @@ const SEASON_GAMES = 144;
 const GAMES_PER_OPPONENT = 16;
 const FOCUS_TEAM = "LG";
 const RACE_TEAMS = ["KT", "삼성", "LG", "KIA"];
+const MC_METRICS = [
+  { key: "binom", label: "이항", prior: "현재 승률", expected: "binomFinalPct" },
+  { key: "pyth", label: "피타", prior: "피타고리안", expected: "pythFinalPct" },
+  { key: "versus", label: "상대전적", prior: "상대별 승률", expected: "versusFinalPct" },
+];
 const REPO = { owner: "wmjoo", name: "kbo_rank_sim", branch: "main" };
 const TOKEN_KEY = "kbo.githubToken";
 
@@ -82,6 +87,7 @@ const state = {
   data: null,
   source: "snapshot",
   sim: [],
+  mc: null,
   sorts: {
     sim: { key: "rank", dir: "asc" },
     rank: { col: 0, dir: "asc" },
@@ -707,6 +713,410 @@ function adminLog(text) {
   $("admin-log").textContent = text;
 }
 
+function formatProb(rate) {
+  if (!Number.isFinite(rate)) return "-";
+  const text = (rate * 100).toFixed(1);
+  return text === "0.0" ? "-" : `${text}%`;
+}
+
+function rankProbs(row) {
+  if (Array.isArray(row.ranks) && row.ranks.length) return row.ranks;
+  return Array.from({ length: 10 }, (_, i) => row[`p${i + 1}`] ?? 0);
+}
+
+function metricRankValues(payload, team, rankIdx) {
+  return MC_METRICS.map((m) => {
+    const row = (payload.results?.[m.key] || []).find((t) => t.name === team);
+    if (!row) return NaN;
+    return rankProbs(row)[rankIdx];
+  }).filter(Number.isFinite);
+}
+
+function avgMinMax(values) {
+  if (!values.length) return { avg: NaN, min: NaN, max: NaN };
+  return {
+    avg: values.reduce((sum, v) => sum + v, 0) / values.length,
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+function redColorMap(p) {
+  const t = Math.max(0, Math.min(1, Number(p) || 0));
+  const stops = [
+    [0, [255, 249, 247]],
+    [0.2, [254, 214, 206]],
+    [0.4, [246, 140, 128]],
+    [0.65, [214, 52, 48]],
+    [1, [128, 14, 20]],
+  ];
+  let i = 0;
+  while (i < stops.length - 2 && t > stops[i + 1][0]) i += 1;
+  const [t0, c0] = stops[i];
+  const [t1, c1] = stops[i + 1];
+  const u = (t - t0) / (t1 - t0 || 1);
+  const rgb = c0.map((v, k) => Math.round(v + (c1[k] - v) * u));
+  const luma = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) / 255;
+  return { bg: `rgb(${rgb.join(",")})`, dark: luma < 0.55 };
+}
+
+function renderMcCards(payload) {
+  const stats = [0, 1, 2, 3].map((idx) => ({
+    idx,
+    ...avgMinMax(metricRankValues(payload, FOCUS_TEAM, idx)),
+  }));
+  const peak = Math.max(0, ...stats.map((s) => (Number.isFinite(s.avg) ? s.avg : 0)));
+  const cards = stats
+    .map((s) => {
+      const heat = redColorMap(s.avg);
+      const isMax = Number.isFinite(s.avg) && s.avg > 0 && s.avg === peak;
+      const ink = heat.dark ? "#fff7f5" : "#3a1f1f";
+      const muted = heat.dark ? "rgba(255,247,245,0.78)" : "#8a6a66";
+      return `<article class="mc-card${isMax ? " max" : ""}" style="background:${heat.bg};color:${ink};--mc-muted:${muted}">
+        <span class="mc-card-k">${s.idx + 1}위</span>
+        <b>${formatProb(s.avg)}</b>
+        <small>[${formatProb(s.min)}–${formatProb(s.max)}]</small>
+      </article>`;
+    })
+    .join("");
+  return `<div class="mc-cards">${cards}</div>
+    <p class="mc-cards-note">${escapeHtml(FOCUS_TEAM)} · 이항·피타·상대전적 평균 [최소–최대] · 배경은 0–100% 레드 스케일</p>`;
+}
+
+function kstStamp() {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    dateCompact: `${parts.year}${parts.month}${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    iso: `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+09:00`,
+  };
+}
+
+function bernoulliWins(n, p) {
+  let w = 0;
+  for (let i = 0; i < n; i += 1) {
+    if (Math.random() < p) w += 1;
+  }
+  return w;
+}
+
+function versusGamePs(team) {
+  const fallback = pct(team.w, team.l);
+  const items = remainingOpponents(team.name);
+  const ps = [];
+  let accounted = 0;
+  items.forEach((x) => {
+    const take = Math.min(x.remain, Math.max(0, team.remain - accounted));
+    const p = x.w + x.l === 0 ? fallback : x.wp;
+    for (let i = 0; i < take; i += 1) ps.push(p);
+    accounted += take;
+  });
+  const leftover = Math.max(0, team.remain - accounted);
+  for (let i = 0; i < leftover; i += 1) ps.push(fallback);
+  return { ps, leftover, opponents: items.map((x) => ({ name: x.name, remain: x.remain, p: x.w + x.l === 0 ? fallback : x.wp })) };
+}
+
+function winsFromPs(ps) {
+  let w = 0;
+  ps.forEach((p) => {
+    if (Math.random() < p) w += 1;
+  });
+  return w;
+}
+
+function rankSimTeams(rows) {
+  return [...rows].sort((a, b) => b.fp - a.fp || b.fw - a.fw || a.fl - b.fl || a.name.localeCompare(b.name, "ko"));
+}
+
+function buildMcPlans(teams) {
+  return teams.map((t) => {
+    const cur = pct(t.w, t.l);
+    const versus = versusGamePs(t);
+    return {
+      name: t.name,
+      w: t.w,
+      l: t.l,
+      t: t.t,
+      g: t.g,
+      remain: t.remain,
+      expected: {
+        binom: t.binomFinalPct,
+        pyth: t.pythFinalPct,
+        versus: t.versusFinalPct,
+      },
+      p: { binom: cur, pyth: t.pyth, versus: versus.ps.length ? versus.ps.reduce((s, p) => s + p, 0) / versus.ps.length : cur },
+      versus,
+    };
+  });
+}
+
+function simulateMetric(plans, metric) {
+  const rows = plans.map((t) => {
+    const extraW = metric === "versus" ? winsFromPs(t.versus.ps) : bernoulliWins(t.remain, t.p[metric]);
+    const fw = t.w + extraW;
+    const fl = t.l + (t.remain - extraW);
+    return { name: t.name, fw, fl, fp: pct(fw, fl) };
+  });
+  return rankSimTeams(rows);
+}
+
+async function runMonteCarlo(n, onProgress) {
+  const teams = computedTeams();
+  if (!teams.length) throw new Error("순위 데이터가 없습니다.");
+  const plans = buildMcPlans(teams);
+  const acc = {};
+  plans.forEach((t) => {
+    acc[t.name] = {};
+    MC_METRICS.forEach((m) => {
+      acc[t.name][m.key] = { counts: Array(10).fill(0), rankSum: 0, pctSum: 0 };
+    });
+  });
+
+  const chunk = 200;
+  for (let done = 0; done < n; done += chunk) {
+    const take = Math.min(chunk, n - done);
+    for (let i = 0; i < take; i += 1) {
+      MC_METRICS.forEach((m) => {
+        const ranked = simulateMetric(plans, m.key);
+        ranked.forEach((row, idx) => {
+          const stat = acc[row.name][m.key];
+          const rank = idx + 1;
+          if (rank >= 1 && rank <= 10) stat.counts[rank - 1] += 1;
+          stat.rankSum += rank;
+          stat.pctSum += row.fp;
+        });
+      });
+    }
+    if (onProgress) onProgress(done + take, n);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  const stamp = kstStamp();
+  const results = {};
+  MC_METRICS.forEach((m) => {
+    results[m.key] = plans
+      .map((t) => {
+        const stat = acc[t.name][m.key];
+        const ranks = stat.counts.map((c) => c / n);
+        return {
+          name: t.name,
+          expectedPct: t.expected[m.key],
+          priorP: t.p[m.key],
+          ranks,
+          p1: ranks[0],
+          p2: ranks[1],
+          p3: ranks[2],
+          p4: ranks[3],
+          p5: ranks[4],
+          p6: ranks[5],
+          p7: ranks[6],
+          p8: ranks[7],
+          p9: ranks[8],
+          p10: ranks[9],
+          meanRank: stat.rankSum / n,
+          meanFinalPct: stat.pctSum / n,
+        };
+      })
+      .sort((a, b) => b.expectedPct - a.expectedPct || b.p1 - a.p1 || a.name.localeCompare(b.name, "ko"));
+  });
+
+  return {
+    asOf: state.data?.asOf || null,
+    asOfLabel: state.data?.asOfLabel || "",
+    ranAt: stamp.iso,
+    ranDate: stamp.date,
+    ranTime: stamp.time,
+    n,
+    seasonGames: SEASON_GAMES,
+    gamesPerOpponent: GAMES_PER_OPPONENT,
+    method: "independent_bernoulli",
+    note: "잔여 경기는 팀별 독립 베르누이. 맞대결에서 한 팀의 승이 다른 팀의 패가 되는 상관은 넣지 않음.",
+    priors: {
+      binom: { type: "current_wp", desc: "잔여 각 경기를 현재 승률 p=W/(W+L)로 추출" },
+      pyth: { type: "pythagorean", exponent: 2, desc: "잔여 각 경기를 피타고리안 승률로 추출" },
+      versus: { type: "h2h_remaining", fallback: "current_wp", desc: "잔여를 상대별로 나눠 상대전적 승률로 추출. 빠진 잔여는 현재 승률" },
+    },
+    standings: plans.map((t) => ({
+      name: t.name,
+      g: t.g,
+      w: t.w,
+      l: t.l,
+      t: t.t,
+      remain: t.remain,
+      p: t.p,
+      versus: t.versus.opponents,
+    })),
+    results,
+  };
+}
+
+function mcLog(text) {
+  const el = $("mc-log");
+  if (el) el.textContent = text;
+}
+
+function renderMcResults(payload) {
+  const el = $("mc-results");
+  if (!el) return;
+  if (!payload?.results) {
+    el.innerHTML = `<p class="empty">시뮬레이션 시작을 누르면 1~10위 확률을 계산합니다.</p>`;
+    return;
+  }
+  const head = `<p class="mc-meta">${escapeHtml(payload.ranDate)} ${escapeHtml(payload.ranTime || "")} · ${payload.n.toLocaleString("ko-KR")}회 · 기준 ${escapeHtml(payload.asOf || "-")} · 독립 베르누이</p>`;
+  const rankHeads = Array.from({ length: 10 }, (_, i) => `<th>${i + 1}위</th>`).join("");
+  const blocks = MC_METRICS.map((m) => {
+    const rows = [...(payload.results[m.key] || [])].sort(
+      (a, b) => b.expectedPct - a.expectedPct || a.name.localeCompare(b.name, "ko")
+    );
+    const body = rows
+      .map((r) => {
+        const ranks = rankProbs(r);
+        const rankCells = ranks
+          .map((p, i) => `<td${i === 0 ? ' class="mc-p1"' : ""}>${formatProb(p)}</td>`)
+          .join("");
+        return `<tr${r.name === FOCUS_TEAM ? ' class="mc-focus"' : ""}>
+        <td class="team">${teamDot(r.name)}</td>
+        <td>${formatPct(r.expectedPct)}</td>
+        ${rankCells}
+        <td>${Number(r.meanRank).toFixed(2)}</td>
+      </tr>`;
+      })
+      .join("");
+    return `<article class="mc-block">
+      <h3>${m.label} · 사전확률 ${m.prior}</h3>
+      <div class="table-wrap"><table class="slim">
+        <thead><tr><th class="team">팀</th><th>기대</th>${rankHeads}<th>평균순위</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>
+    </article>`;
+  }).join("");
+  el.innerHTML = renderMcCards(payload) + head + blocks;
+}
+
+function simResultPath(payload) {
+  const asOfKey = String(payload.asOf || payload.ranDate || "").replaceAll("-", "");
+  return `data/sim_result_${asOfKey}_${payload.n}.json`;
+}
+
+async function saveStandings(token, data) {
+  const text = `${JSON.stringify(data, null, 2)}\n`;
+  await putRepoFile(token, `data/daily/${data.asOf}.json`, text, `${data.asOf} KBO 기록 수집`);
+  await putRepoFile(token, "data/kbo.json", text, `${data.asOf} KBO 최신 스냅샷`);
+}
+
+async function saveMcResult(payload, token = getToken()) {
+  if (!token) {
+    mcLog(`${payload.ranDate} · ${payload.n.toLocaleString("ko-KR")}회 완료. 저장하려면 도움말 탭에 토큰을 넣으세요.`);
+    return false;
+  }
+  const text = `${JSON.stringify(payload, null, 2)}\n`;
+  await putRepoFile(token, simResultPath(payload), text, `${payload.asOf || payload.ranDate} 몬테카를로 ${payload.n}회`);
+  await putRepoFile(token, "data/sim_latest.json", text, `${payload.asOf || payload.ranDate} 몬테카를로 최신`);
+  return true;
+}
+
+async function persistAll(token) {
+  const saved = [];
+  if (state.data?.asOf) {
+    await saveStandings(token, state.data);
+    saved.push("순위표");
+  }
+  if (state.mc?.results) {
+    await saveMcResult(state.mc, token);
+    saved.push("시뮬");
+  }
+  return saved;
+}
+
+function pickBestMc(payloads) {
+  return payloads
+    .filter((p) => p?.results)
+    .sort((a, b) => String(b.asOf || "").localeCompare(String(a.asOf || "")) || Number(b.n || 0) - Number(a.n || 0))[0];
+}
+
+async function fetchSimPayloads() {
+  const found = [];
+  const token = getToken();
+  try {
+    const url = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/data?ref=${REPO.branch}`;
+    const res = await fetch(url, token ? { headers: ghHeaders(token) } : {});
+    const files = res.ok ? await res.json() : [];
+    if (Array.isArray(files)) {
+      const sims = files.filter((f) => f.name === "sim_latest.json" || /^sim_result_/.test(f.name));
+      for (const file of sims) {
+        try {
+          const src = file.download_url || `data/${file.name}`;
+          const body = await fetch(src, { cache: "no-store" });
+          if (body.ok) found.push(await body.json());
+        } catch {
+          /* skip one file */
+        }
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  if (!found.length) {
+    try {
+      const res = await fetch("data/sim_latest.json", { cache: "no-store" });
+      if (res.ok) found.push(await res.json());
+    } catch {
+      /* none */
+    }
+  }
+  return found;
+}
+
+async function loadLatestMc() {
+  try {
+    const best = pickBestMc(await fetchSimPayloads());
+    if (!best) {
+      renderMcResults(null);
+      return;
+    }
+    state.mc = best;
+    renderMcResults(best);
+    mcLog(`저장된 결과 · 기준 ${best.asOf || "-"} · ${Number(best.n).toLocaleString("ko-KR")}회`);
+  } catch {
+    renderMcResults(null);
+  }
+}
+
+async function startMonteCarlo() {
+  const n = Number($("mc-n").value) || 10000;
+  const btn = $("mc-run");
+  btn.disabled = true;
+  try {
+    mcLog(`시뮬레이션 ${n.toLocaleString("ko-KR")}회 실행 중…`);
+    const payload = await runMonteCarlo(n, (done, total) => {
+      mcLog(`시뮬레이션 ${done.toLocaleString("ko-KR")} / ${total.toLocaleString("ko-KR")}`);
+    });
+    state.mc = payload;
+    renderMcResults(payload);
+    try {
+      const ok = await saveMcResult(payload);
+      if (ok) mcLog(`${payload.asOf || payload.ranDate} · ${payload.n.toLocaleString("ko-KR")}회 저장 완료.`);
+    } catch (err) {
+      mcLog(`화면 결과는 있습니다. 저장 실패: ${explainAdminError(err, "github")}`);
+    }
+  } catch (err) {
+    mcLog(`실행 실패: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function collectAndSave() {
   const token = getToken();
   if (!token) {
@@ -730,12 +1140,11 @@ async function collectAndSave() {
       adminLog(`라이브 수집 실패(${explainAdminError(err, "kbo")}). 현재 스냅샷으로 저장합니다…`);
     }
     if (!data.asOf) throw new Error("기준 일자를 읽지 못했습니다.");
-    const text = `${JSON.stringify(data, null, 2)}\n`;
     adminLog(`${data.asOfLabel || data.asOf} 표를 레포에 저장하는 중…`);
-    await putRepoFile(token, `data/daily/${data.asOf}.json`, text, `${data.asOf} KBO 기록 수집`);
-    await putRepoFile(token, "data/kbo.json", text, `${data.asOf} KBO 최신 스냅샷`);
+    await saveStandings(token, data);
     applyData(data, live ? "live" : "snapshot");
-    adminLog(`${data.asOf} 저장 완료${live ? "" : " (스냅샷)"}. Pages가 다시 빌드되면 갱신됩니다.`);
+    if (state.mc?.results) await saveMcResult(state.mc, token);
+    adminLog(`${data.asOf} 순위표${state.mc?.results ? "·시뮬" : ""} 저장 완료${live ? "" : " (스냅샷)"}.`);
     await loadDailyList();
   } catch (err) {
     adminLog(`저장 실패: ${explainAdminError(err, "github")}`);
@@ -844,9 +1253,15 @@ function bind() {
     adminLog("토큰을 저장했습니다. GitHub 권한을 확인하는 중…");
     try {
       await verifyToken(token);
-      adminLog("토큰 확인됨. Contents 읽기가 됩니다. 이제 수집 버튼을 누르세요.");
+      adminLog("토큰 확인됨. 현재 순위표·시뮬 결과를 저장하는 중…");
+      const saved = await persistAll(token);
+      adminLog(
+        saved.length
+          ? `토큰 확인됨. ${saved.join("·")} 저장 완료.`
+          : "토큰 확인됨. 아직 저장할 순위표/시뮬 결과가 없습니다."
+      );
     } catch (err) {
-      adminLog(`토큰은 저장됐지만 확인 실패: ${explainAdminError(err, "github")}`);
+      adminLog(`토큰은 저장됐지만 확인/저장 실패: ${explainAdminError(err, "github")}`);
     }
   });
   $("clear-token").addEventListener("click", () => {
@@ -856,8 +1271,10 @@ function bind() {
   });
   $("collect-save").addEventListener("click", collectAndSave);
 
+  $("mc-run").addEventListener("click", startMonteCarlo);
+
   const tab = location.hash.replace("#", "");
-  setTab(["records", "admin", "sim"].includes(tab) ? tab : "sim");
+  setTab(["sim", "scenario", "records", "admin"].includes(tab) ? tab : "sim");
 }
 
 async function boot() {
@@ -869,6 +1286,7 @@ async function boot() {
   } catch {
     setStatus("snap", `스냅샷 · ${snapshot.asOfLabel || ""}`);
   }
+  await loadLatestMc();
   renderHelpMath();
   setTimeout(renderHelpMath, 0);
   setTimeout(renderHelpMath, 400);
