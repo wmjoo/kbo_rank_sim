@@ -12,6 +12,7 @@ const TEAM_COLORS = {
 };
 
 const SEASON_GAMES = 144;
+const GAMES_PER_OPPONENT = 16;
 const FOCUS_TEAM = "LG";
 const RACE_TEAMS = ["KT", "삼성", "LG", "KIA"];
 const REPO = { owner: "wmjoo", name: "kbo_rank_sim", branch: "main" };
@@ -37,6 +38,7 @@ const state = {
     rank: { col: 0, dir: "asc" },
     hitter: { col: 0, dir: "asc" },
     pitcher: { col: 0, dir: "asc" },
+    h2h: { col: 0, dir: "asc" },
   },
 };
 
@@ -70,6 +72,14 @@ function pct(w, l) {
 
 function formatPct(value) {
   return Number.isFinite(value) ? value.toFixed(3) : "-";
+}
+
+function teamTint(name) {
+  const hex = TEAM_COLORS[name] || "#888888";
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return { border: hex, bg: `rgba(${r},${g},${b},0.12)` };
 }
 
 function pythagorean(rs, ra) {
@@ -135,6 +145,19 @@ function binomModeWins(n, p) {
   return Math.min(n, Math.max(0, Math.round(n * p)));
 }
 
+function versusExpectedWins(teamName, fallbackPct, remain) {
+  const items = remainingOpponents(teamName);
+  let exp = 0;
+  let accounted = 0;
+  items.forEach((x) => {
+    const p = x.w + x.l === 0 ? fallbackPct : x.wp;
+    exp += x.remain * p;
+    accounted += x.remain;
+  });
+  exp += Math.max(0, remain - accounted) * fallbackPct;
+  return exp;
+}
+
 function computedTeams() {
   const teams = state.sim.map((t) => {
     const curPct = pct(t.w, t.l);
@@ -142,16 +165,20 @@ function computedTeams() {
     const likelyW = binomModeWins(t.remain, curPct);
     const binomFinalPct = pct(t.w + likelyW, t.l + (t.remain - likelyW));
     const pythFinalPct = denom === 0 ? t.pyth : (t.w + t.remain * t.pyth) / denom;
-    return { ...t, pct: curPct, likelyW, binomFinalPct, pythFinalPct };
+    const vsExp = versusExpectedWins(t.name, curPct, t.remain);
+    const versusFinalPct = denom === 0 ? curPct : (t.w + vsExp) / denom;
+    return { ...t, pct: curPct, likelyW, vsExp, binomFinalPct, pythFinalPct, versusFinalPct };
   });
   const binomRank = rankBy(teams, "binomFinalPct");
   const pythRank = rankBy(teams, "pythFinalPct");
+  const versusRank = rankBy(teams, "versusFinalPct");
   const standings = [...teams].sort((a, b) => b.pct - a.pct || b.w - a.w || a.l - b.l);
   return teams.map((t) => ({
     ...t,
     rank: standings.findIndex((x) => x.name === t.name) + 1,
     binomRank: binomRank[t.name],
     pythRank: pythRank[t.name],
+    versusRank: versusRank[t.name],
   }));
 }
 
@@ -269,6 +296,8 @@ function renderSim() {
     ["b_rk", "binomRank", ""],
     ["p_wp", "pythFinalPct", ""],
     ["p_rk", "pythRank", ""],
+    ["v_wp", "versusFinalPct", ""],
+    ["v_rk", "versusRank", ""],
   ];
 
   const head = cols
@@ -295,11 +324,14 @@ function renderSim() {
         <td>${t.binomRank}</td>
         <td>${formatPct(t.pythFinalPct)}</td>
         <td>${t.pythRank}</td>
+        <td>${formatPct(t.versusFinalPct)}</td>
+        <td>${t.versusRank}</td>
       </tr>`;
     })
     .join("");
 
   $("sim-table").innerHTML = `<div class="table-wrap"><table class="slim" data-table="sim"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  renderRemainBoards();
   renderLadder();
 }
 
@@ -315,8 +347,14 @@ function remainOutcomes(team) {
   return out;
 }
 
+function raceTeamsByStandings() {
+  return [...state.sim]
+    .filter((t) => RACE_TEAMS.includes(t.name))
+    .sort((a, b) => b.w / Math.max(1, b.w + b.l) - a.w / Math.max(1, a.w + a.l) || b.w - a.w || a.l - b.l);
+}
+
 function renderLadder() {
-  const teams = RACE_TEAMS.map((name) => state.sim.find((t) => t.name === name)).filter(Boolean);
+  const teams = raceTeamsByStandings();
   if (teams.length < 4) {
     $("race-ladder").innerHTML = `<p class="empty">KT·삼성·LG·KIA 순위 데이터가 부족합니다.</p>`;
     return;
@@ -353,9 +391,11 @@ function renderLadder() {
       const cells = col.outcomes
         .map((o) => {
           const top = (maxP - o.pct) * pxPerWp;
-          const focus = col.team.name === FOCUS_TEAM ? "focus" : "";
-          return `<div class="ladder-cell ${focus}" style="top:${top}px;height:${rowH - 2}px">
-            ${o.extraW}-${o.extraL} | ${formatPct(o.pct)}
+          const tint = teamTint(col.team.name);
+          const focus = col.team.name === FOCUS_TEAM;
+          const bg = focus ? tint.bg : "#fff";
+          return `<div class="ladder-cell${focus ? " focus" : ""}" style="top:${top}px;height:${rowH - 2}px;border-left-color:${tint.border};background:${bg}">
+            <b class="ladder-wl">${o.extraW}-${o.extraL}</b><span class="ladder-wp"> | ${formatPct(o.pct)}</span>
           </div>`;
         })
         .join("");
@@ -371,10 +411,88 @@ function renderLadder() {
   </div>`;
 }
 
+function parseH2hRecord(cell) {
+  if (!cell || cell === "■") return null;
+  const text = String(cell).replace(/\s+/g, "");
+  const dashed = text.match(/^(\d+)-(\d+)-(\d+)$/);
+  if (dashed) return { w: Number(dashed[1]), l: Number(dashed[2]), t: Number(dashed[3]) };
+  const named = text.match(/^(\d+)승(\d+)패(\d+)무$/);
+  if (named) return { w: Number(named[1]), l: Number(named[2]), t: Number(named[3]) };
+  return null;
+}
+
+function remainingOpponents(focus) {
+  const rows = state.data?.h2h;
+  if (!rows || rows.length < 2) return [];
+  const header = rows[0];
+  const row = rows.slice(1).find((r) => r[0] === focus);
+  if (!row) return [];
+  const items = [];
+  for (let i = 1; i < header.length; i += 1) {
+    const name = String(header[i] || "")
+      .replace(/\(.*\)/g, "")
+      .replace(/\s+/g, "")
+      .trim();
+    if (!name || name === "합계" || name === focus) continue;
+    const rec = parseH2hRecord(row[i]);
+    if (!rec) continue;
+    const played = rec.w + rec.l + rec.t;
+    const remain = Math.max(0, GAMES_PER_OPPONENT - played);
+    const decided = rec.w + rec.l;
+    items.push({
+      name,
+      remain,
+      w: rec.w,
+      l: rec.l,
+      t: rec.t,
+      wp: decided === 0 ? 0 : rec.w / decided,
+    });
+  }
+  return items.filter((x) => x.remain > 0);
+}
+
+function remainBoard(team) {
+  const items = remainingOpponents(team.name);
+  const total = items.reduce((sum, x) => sum + x.remain, 0);
+  const cols = Math.max(items.length, 1);
+  const cells = (row) =>
+    (items.length ? items : [null])
+      .map((x) => {
+        if (!x) return `<div class="remain-cell empty">-</div>`;
+        if (row === "name") {
+          return `<div class="remain-cell name">${teamDot(x.name)}</div>`;
+        }
+        if (row === "remain") {
+          return `<div class="remain-cell remain">${x.remain}경기</div>`;
+        }
+        return `<div class="remain-cell rec">${x.w}-${x.l}-${x.t} · ${formatPct(x.wp)}</div>`;
+      })
+      .join("");
+  return `<article class="remain-board">
+    <h3>${teamDot(team.name)} 잔여 ${total}경기 · ${items.length}상대</h3>
+    <div class="remain-grid" style="--cols:${cols}">
+      ${cells("name")}${cells("remain")}${cells("rec")}
+    </div>
+  </article>`;
+}
+
+function renderRemainBoards() {
+  const el = $("remain-boards");
+  if (!el) return;
+  const teams = raceTeamsByStandings();
+  if (!teams.length) {
+    el.innerHTML = `<p class="empty">잔여 대진을 계산하지 못했습니다.</p>`;
+    return;
+  }
+  el.innerHTML = `<p class="hint">순위 순. 상대전적 승률 = 승 / (승+패). 잔여 = 16 − (승+패+무).</p>
+    ${teams.map(remainBoard).join("")}`;
+}
+
 function renderRecords() {
   const data = state.data;
   $("asof").textContent = data.asOfLabel || "";
   renderTable($("rank-table"), data.rank, state.sorts.rank, "rank");
+  renderTable($("h2h-table"), data.h2h, state.sorts.h2h, "h2h");
   renderTable($("hitter-table"), data.hitter, state.sorts.hitter, "hitter");
   renderTable($("pitcher-table"), data.pitcher, state.sorts.pitcher, "pitcher");
 }
@@ -385,10 +503,7 @@ function setStatus(kind, text) {
   el.textContent = text;
 }
 
-function parseHtmlTables(html) {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const table = doc.querySelector("table.tData, table");
-  if (!table) return [];
+function tableRows(table) {
   return [...table.rows].map((tr) =>
     [...tr.cells].flatMap((td) => {
       const span = Number(td.colSpan || 1);
@@ -398,6 +513,13 @@ function parseHtmlTables(html) {
   );
 }
 
+function parseAllTables(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const found = [...doc.querySelectorAll("table.tData")];
+  const tables = found.length ? found : [...doc.querySelectorAll("table")];
+  return tables.map(tableRows).filter((rows) => rows.length >= 2);
+}
+
 async function fetchViaProxy(url) {
   let lastError;
   for (const make of PROXY_PREFIXES) {
@@ -405,14 +527,22 @@ async function fetchViaProxy(url) {
       const res = await fetch(make(url), { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
       const html = await res.text();
-      const rows = parseHtmlTables(html);
-      if (rows.length < 2) throw new Error("empty table");
-      return { html, rows };
+      const tables = parseAllTables(html);
+      if (!tables.length) throw new Error("empty table");
+      return { html, tables, rows: tables[0] };
     } catch (err) {
       lastError = err;
     }
   }
   throw lastError;
+}
+
+function pickH2h(tables) {
+  return (
+    (tables || []).find((t) => t[0] && t[0].some((c) => /승-패|승패/.test(String(c)))) ||
+    tables[1] ||
+    []
+  );
 }
 
 function asOfFromHtml(html) {
@@ -437,6 +567,7 @@ async function importLive() {
     asOfLabel: asof.asOfLabel,
     sources: SOURCES,
     rank: rank.rows,
+    h2h: pickH2h(rank.tables),
     hitter: hitter.rows,
     pitcher: pitcher.rows,
   };
@@ -449,6 +580,9 @@ async function loadSnapshot() {
 }
 
 function applyData(data, source) {
+  if ((!data.h2h || data.h2h.length < 2) && state.data?.h2h?.length >= 2) {
+    data = { ...data, h2h: state.data.h2h };
+  }
   state.data = data;
   state.source = source;
   state.sim = parseRank(data.rank);
@@ -580,6 +714,15 @@ function renderAll() {
   renderRecords();
 }
 
+function renderHelpMath() {
+  if (!window.katex) return;
+  document.querySelectorAll(".formula[data-tex]").forEach((el) => {
+    if (el.dataset.rendered === "1") return;
+    window.katex.render(el.dataset.tex, el, { displayMode: true, throwOnError: false });
+    el.dataset.rendered = "1";
+  });
+}
+
 function setTab(name) {
   document.querySelectorAll(".tabs button").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === name);
@@ -589,7 +732,10 @@ function setTab(name) {
   });
   const hash = name === "sim" ? "#sim" : `#${name}`;
   history.replaceState(null, "", hash);
-  if (name === "admin") loadDailyList();
+  if (name === "admin") {
+    renderHelpMath();
+    loadDailyList();
+  }
 }
 
 function bindSortClicks() {
@@ -603,7 +749,7 @@ function bindSortClicks() {
     if (!store) return;
     if (thEl.dataset.sortKey) {
       const key = thEl.dataset.sortKey;
-      const numericDesc = !["rank", "name", "binomRank", "pythRank"].includes(key);
+      const numericDesc = !["rank", "name", "binomRank", "pythRank", "versusRank"].includes(key);
       toggleSort(store, key, numericDesc ? "desc" : "asc");
     } else if (thEl.dataset.sortCol != null) {
       const col = Number(thEl.dataset.sortCol);
@@ -651,6 +797,9 @@ async function boot() {
   } catch {
     setStatus("snap", `스냅샷 · ${snapshot.asOfLabel || ""}`);
   }
+  renderHelpMath();
+  setTimeout(renderHelpMath, 0);
+  setTimeout(renderHelpMath, 400);
 }
 
 bind();

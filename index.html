@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>KBO 순위 시뮬레이터</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
     <link rel="stylesheet" href="css/app.css" />
   </head>
   <body>
@@ -23,12 +24,13 @@
     <main>
       <section id="panel-sim" class="panel active">
         <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 추정합니다. 헤더를 누르면 정렬됩니다.</p>
-        <p class="legend">b_wp 이항 최종승률 · b_rk 이항 최종순위 · p_wp 피타 최종승률 · p_rk 피타 최종순위</p>
+        <p class="legend">b_wp 이항 최종승률 · b_rk 이항 최종순위 · p_wp 피타 최종승률 · p_rk 피타 최종순위 · v_wp 상대전적 최종승률 · v_rk 상대전적 최종순위</p>
         <div id="sim-table"></div>
 
         <article class="section">
           <h2>KT · 삼성 · LG · KIA 최종승률 사다리</h2>
           <p class="hint">네 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
+          <div id="remain-boards"></div>
           <div id="race-ladder"></div>
         </article>
       </section>
@@ -42,6 +44,12 @@
           <h2>팀 순위</h2>
           <a class="src" href="https://www.koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx" target="_blank" rel="noreferrer">koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx</a>
           <div id="rank-table"></div>
+        </article>
+
+        <article class="section">
+          <h2>팀간 승패표</h2>
+          <a class="src" href="https://www.koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx" target="_blank" rel="noreferrer">koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx</a>
+          <div id="h2h-table"></div>
         </article>
 
         <article class="section">
@@ -62,21 +70,32 @@
           <h2>산출 기준</h2>
           <p class="hint">시즌은 144경기로 보고, 잔여 = 144 − 경기입니다. 잔여 경기는 무승부가 없다고 가정합니다. 현재 승률은 KBO와 같이 승 / (승 + 패)입니다.</p>
 
-          <h3>피타 · p_wp · p_rk</h3>
-          <p class="hint">빌 제임스 피타고리안 기대승률입니다. 득점(RS)은 팀 타격 표의 R, 실점(RA)은 팀 투수 표의 R입니다. 지수는 2를 씁니다.</p>
-          <p class="formula">피타 = RS² / (RS² + RA²)</p>
-          <p class="hint">잔여 경기에서 이 비율만큼 이긴다고 보고, 기대 추가승 = 잔여 × 피타 를 현재 승수에 더합니다. 분모는 현재 승패와 잔여를 더한 결정경기 수입니다. 무승부는 승률 분모에 넣지 않습니다.</p>
-          <p class="formula">p_wp = (승 + 잔여 × 피타) / (승 + 패 + 잔여)</p>
-          <p class="hint">p_rk는 10개 팀을 이 p_wp 내림차순으로 매긴 예상 순위입니다. 같으면 현재 승이 많은 팀, 그다음 패가 적은 팀입니다.</p>
-
-          <h3>b_wp · b_rk</h3>
-          <p class="hint">잔여 n경기를 현재 승률 p의 이항분포로 봅니다. 기대값이 아니라 가장 가능성 높은 잔여 승수(최빈값, 반올림)를 쓰고, 그때의 최종 승률을 계산합니다.</p>
-          <p class="formula">잔여승* = round(잔여 × 현재승률)</p>
-          <p class="formula">b_wp = (승 + 잔여승*) / (승 + 패 + 잔여)</p>
-          <p class="hint">b_rk는 10개 팀을 이 b_wp 내림차순으로 매긴 예상 순위입니다. 동률 처리는 p_rk와 같습니다.</p>
-
-          <h3>KT · 삼성 · LG · KIA 사다리</h3>
-          <p class="hint">무승부 없이 잔여 w승 (잔여−w)패일 때 최종승률 = (현재승 + w) / (현재승 + 현재패 + 잔여) 입니다. 사다리는 이 최종승률을 세로 높이로 맞춰 네 팀을 비교합니다. 경기가 진행되면 잔여 수가 줄어 표가 갱신됩니다.</p>
+          <div class="formula-grid">
+            <div class="formula-col">
+              <h3>피타 · p_wp · p_rk</h3>
+              <p class="hint">득점 RS는 팀 타격 R, 실점 RA는 팀 투수 R. 지수 2.</p>
+              <p class="formula" data-tex="\mathrm{pyth}=\dfrac{\mathrm{RS}^{2}}{\mathrm{RS}^{2}+\mathrm{RA}^{2}}"></p>
+              <p class="formula" data-tex="\mathrm{p\_wp}=\dfrac{W+R\cdot\mathrm{pyth}}{W+L+R}"></p>
+              <p class="hint">p_rk는 p_wp 내림차순. 동률은 승·패.</p>
+            </div>
+            <div class="formula-col">
+              <h3>b_wp · b_rk</h3>
+              <p class="hint">잔여 n경기를 현재 승률 p의 이항 최빈값으로 추정.</p>
+              <p class="formula" data-tex="W^{*}_{\mathrm{rem}}=\mathrm{round}(R\cdot p)"></p>
+              <p class="formula" data-tex="\mathrm{b\_wp}=\dfrac{W+W^{*}_{\mathrm{rem}}}{W+L+R}"></p>
+              <p class="hint">b_rk는 b_wp 내림차순. 동률은 p_rk와 같음.</p>
+            </div>
+            <div class="formula-col">
+              <h3>v_wp · v_rk</h3>
+              <p class="hint">잔여를 상대별로 나눠 상대전적 승률로 기대승을 합산.</p>
+              <p class="formula" data-tex="p_{i}=\dfrac{W_{i}}{W_{i}+L_{i}}"></p>
+              <p class="formula" data-tex="E[W_{\mathrm{rem}}]=\sum_{i} r_{i}\,p_{i}"></p>
+              <p class="formula" data-tex="\mathrm{v\_wp}=\dfrac{W+E[W_{\mathrm{rem}}]}{W+L+R}"></p>
+              <p class="hint">빠진 잔여는 현재 승률. v_rk는 v_wp 내림차순.</p>
+            </div>
+          </div>
+          <h3>사다리 · 잔여 대진</h3>
+          <p class="hint">사다리 최종승률 = (현재승 + w) / (현재승 + 현재패 + 잔여). 잔여 대진은 16 − (승+패+무). 상대전적 승률은 승 / (승+패). KT·삼성·LG·KIA 표 순서는 그날 순위입니다.</p>
         </article>
 
         <article class="section">
@@ -106,6 +125,7 @@
       </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>

@@ -80,12 +80,16 @@ def fetch(url: str) -> str:
         return res.read().decode("utf-8", errors="replace")
 
 
-def first_table(html: str) -> list[list[str]]:
+def tables(html: str) -> list[list[list[str]]]:
     parser = TableFinder()
     parser.feed(html)
     if not parser.tables:
         raise RuntimeError("표를 찾지 못했습니다.")
-    return parser.tables[0]
+    return parser.tables
+
+
+def first_table(html: str) -> list[list[str]]:
+    return tables(html)[0]
 
 
 def collect() -> dict:
@@ -99,11 +103,13 @@ def collect() -> dict:
         f"{asof[0][0]}년 {int(asof[0][1])}월 {int(asof[0][2])}일 기준" if asof else ""
     )
 
+    rank_tables = tables(rank_html)
     return {
         "asOf": as_of,
         "asOfLabel": as_of_label,
         "sources": SOURCES,
-        "rank": first_table(rank_html),
+        "rank": rank_tables[0],
+        "h2h": rank_tables[1] if len(rank_tables) > 1 else [],
         "hitter": first_table(hitter_html),
         "pitcher": first_table(pitcher_html),
     }
