@@ -61,7 +61,7 @@ body {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   padding: 0 6px;
 }
 
@@ -129,6 +129,137 @@ body {
 
 .btn:disabled {
   opacity: 0.45;
+}
+
+.btn-primary {
+  background: var(--navy);
+  color: #f4efe3;
+  border-color: var(--navy);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.field input {
+  font: inherit;
+  font-weight: 500;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--sheet);
+}
+
+.admin-log {
+  min-height: 1.4em;
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
+code {
+  font-size: 10px;
+  background: #efe8d8;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+table.slim thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+table.slim thead th.sortable:hover {
+  color: var(--ink);
+}
+
+table.slim thead th.sorted::after {
+  content: attr(data-dir);
+  margin-left: 2px;
+  color: var(--gold);
+}
+
+.ladder {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr 1fr;
+  gap: 4px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 6px 8px;
+  overflow-x: auto;
+}
+
+.ladder-head {
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  padding: 2px 0 6px;
+}
+
+.ladder-col {
+  position: relative;
+}
+
+.ladder-axis {
+  position: relative;
+}
+
+.ladder-tick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  color: var(--muted);
+  transform: translateY(-50%);
+}
+
+.ladder-cell {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--navy);
+  background: #fffdf8;
+  border-radius: 3px;
+  padding: 2px 3px;
+  font-size: 10px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.ladder-cell.focus {
+  background: #fff4cc;
+  border-color: var(--gold);
+  border-left-color: #c30452;
+  font-weight: 800;
+}
+
+.ladder-cell b {
+  display: block;
+}
+
+.daily-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.daily-list button,
+.daily-list a {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--sheet);
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .hint {

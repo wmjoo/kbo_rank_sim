@@ -16,19 +16,26 @@
       <nav class="tabs">
         <button type="button" data-tab="sim" class="active">시뮬레이터</button>
         <button type="button" data-tab="records">기록실</button>
+        <button type="button" data-tab="admin">관리자</button>
       </nav>
     </header>
 
     <main>
       <section id="panel-sim" class="panel active">
-        <div class="toolbar">
-          <p class="hint">잔여 경기를 승/패/무로 배정하면 최종 순위가 다시 계산됩니다. 5위 아래 금선은 가을야구 컷.</p>
-          <div class="actions">
-            <button id="reset-sim" class="btn" type="button">초기화</button>
-            <button id="reload-data" class="btn" type="button">새로고침</button>
-          </div>
-        </div>
+        <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 이항 추정합니다. 헤더를 누르면 정렬됩니다.</p>
         <div id="sim-table"></div>
+
+        <article class="section">
+          <h2 id="lg-combo-title">LG Twins 잔여 승패 조합</h2>
+          <p class="hint">무승부 없이 잔여 전승부터 전패까지. 경기가 끝나면 잔여 수가 줄어 표가 갱신됩니다.</p>
+          <div id="lg-combo-table"></div>
+        </article>
+
+        <article class="section">
+          <h2>삼성 · LG · KIA 최종승률 사다리</h2>
+          <p class="hint">세 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
+          <div id="race-ladder"></div>
+        </article>
       </section>
 
       <section id="panel-records" class="panel">
@@ -52,6 +59,33 @@
           <h2>팀 투수 순위</h2>
           <a class="src" href="https://www.koreabaseball.com/Record/Team/Pitcher/Basic1.aspx" target="_blank" rel="noreferrer">koreabaseball.com/Record/Team/Pitcher/Basic1.aspx</a>
           <div id="pitcher-table"></div>
+        </article>
+      </section>
+
+      <section id="panel-admin" class="panel">
+        <article class="section">
+          <h2>일자별 수집</h2>
+          <p class="hint">
+            버튼을 누르면 KBO 기록실 표를 가져와 레포의
+            <code>data/daily/YYYY-MM-DD.json</code>에 저장하고, 최신 스냅샷
+            <code>data/kbo.json</code>도 갱신합니다. GitHub Pages는 정적 사이트라 저장하려면
+            <strong>repo 권한이 있는 Personal Access Token</strong>이 필요합니다. 토큰은 이 브라우저에만 저장됩니다.
+          </p>
+          <label class="field">
+            <span>GitHub 토큰</span>
+            <input id="gh-token" type="password" autocomplete="off" placeholder="ghp_… 또는 github_pat_…" />
+          </label>
+          <div class="actions">
+            <button id="save-token" class="btn" type="button">토큰 저장</button>
+            <button id="clear-token" class="btn" type="button">토큰 지우기</button>
+            <button id="collect-save" class="btn btn-primary" type="button">지금 수집해서 저장</button>
+          </div>
+          <p id="admin-log" class="meta admin-log"></p>
+        </article>
+
+        <article class="section">
+          <h2>저장된 일자</h2>
+          <div id="daily-list"></div>
         </article>
       </section>
     </main>

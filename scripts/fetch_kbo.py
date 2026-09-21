@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KBO 공식 기록실 표를 가져와 data/kbo.json 으로 저장한다."""
+"""KBO 공식 기록실 표를 가져와 data/kbo.json 과 data/daily/YYYY-MM-DD.json 으로 저장한다."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def first_table(html: str) -> list[list[str]]:
     return parser.tables[0]
 
 
-def main() -> None:
+def collect() -> dict:
     rank_html = fetch(SOURCES["rank"])
     hitter_html = fetch(SOURCES["hitter"])
     pitcher_html = fetch(SOURCES["pitcher"])
@@ -99,7 +99,7 @@ def main() -> None:
         f"{asof[0][0]}년 {int(asof[0][1])}월 {int(asof[0][2])}일 기준" if asof else ""
     )
 
-    payload = {
+    return {
         "asOf": as_of,
         "asOfLabel": as_of_label,
         "sources": SOURCES,
@@ -108,10 +108,29 @@ def main() -> None:
         "pitcher": first_table(pitcher_html),
     }
 
-    out = Path(__file__).resolve().parents[1] / "data" / "kbo.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"saved {out}")
+
+def save(payload: dict) -> list[Path]:
+    root = Path(__file__).resolve().parents[1] / "data"
+    root.mkdir(parents=True, exist_ok=True)
+    daily_dir = root / "daily"
+    daily_dir.mkdir(parents=True, exist_ok=True)
+
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    latest = root / "kbo.json"
+    latest.write_text(text, encoding="utf-8")
+    saved = [latest]
+
+    if payload.get("asOf"):
+        daily = daily_dir / f"{payload['asOf']}.json"
+        daily.write_text(text, encoding="utf-8")
+        saved.append(daily)
+    return saved
+
+
+def main() -> None:
+    payload = collect()
+    for path in save(payload):
+        print(f"saved {path}")
 
 
 if __name__ == "__main__":
