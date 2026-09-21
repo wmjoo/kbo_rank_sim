@@ -395,7 +395,7 @@ function renderLadder() {
           const focus = col.team.name === FOCUS_TEAM;
           const bg = focus ? tint.bg : "#fff";
           return `<div class="ladder-cell${focus ? " focus" : ""}" style="top:${top}px;height:${rowH - 2}px;border-left-color:${tint.border};background:${bg}">
-            <b class="ladder-wl">${o.extraW}-${o.extraL}</b><span class="ladder-wp"> | ${formatPct(o.pct)}</span>
+            <b class="ladder-wl">${o.extraW}-${o.extraL}</b><span class="ladder-wp"> · ${formatPct(o.pct)}</span>
           </div>`;
         })
         .join("");
@@ -459,19 +459,16 @@ function remainBoard(team) {
     (items.length ? items : [null])
       .map((x) => {
         if (!x) return `<div class="remain-cell empty">-</div>`;
-        if (row === "name") {
-          return `<div class="remain-cell name">${teamDot(x.name)}</div>`;
-        }
-        if (row === "remain") {
-          return `<div class="remain-cell remain">${x.remain}경기</div>`;
+        if (row === "head") {
+          return `<div class="remain-cell name">${teamDot(x.name)} · ${x.remain}G</div>`;
         }
         return `<div class="remain-cell rec">${x.w}-${x.l}-${x.t} · ${formatPct(x.wp)}</div>`;
       })
       .join("");
   return `<article class="remain-board">
-    <h3>${teamDot(team.name)} 잔여 ${total}경기 · ${items.length}상대</h3>
+    <h3>${teamDot(team.name)} 잔여 ${total}G · ${items.length}상대</h3>
     <div class="remain-grid" style="--cols:${cols}">
-      ${cells("name")}${cells("remain")}${cells("rec")}
+      ${cells("head")}${cells("rec")}
     </div>
   </article>`;
 }
