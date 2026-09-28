@@ -546,8 +546,7 @@ function renderRemainBoards() {
     el.innerHTML = `<p class="empty">잔여 대진을 계산하지 못했습니다.</p>`;
     return;
   }
-  el.innerHTML = `<p class="hint">순위 순. 상대전적 승률 = 승 / (승+패). 잔여 = 16 − (승+패+무).</p>
-    ${teams.map(remainBoard).join("")}`;
+  el.innerHTML = teams.map(remainBoard).join("");
 }
 
 function renderRecords() {

@@ -6,7 +6,7 @@
     <title>KBO 순위 시뮬레이터</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=32" />
+    <link rel="stylesheet" href="css/app.css?v=33" />
   </head>
   <body>
     <header class="app-header">
@@ -25,7 +25,6 @@
 
     <main>
       <section id="panel-sim" class="panel active">
-        <p class="hint">잔여 각 경기를 세 사전확률로 독립 추출합니다. 맞대결 상관은 넣지 않습니다. 1~10위 확률은 소수점 한 자리, 0.0%는 - 입니다.</p>
         <div class="mc-toolbar">
           <label class="field inline">
             <span>팀</span>
@@ -45,19 +44,25 @@
         </div>
         <p id="mc-log" class="meta admin-log"></p>
         <div id="mc-results"></div>
+        <div class="tab-notes">
+          <p class="hint">잔여 각 경기를 세 사전확률로 독립 추출합니다. 맞대결 상관은 넣지 않습니다. 1~10위 확률은 소수점 한 자리, 0.0%는 - 입니다.</p>
+        </div>
       </section>
 
       <section id="panel-scenario" class="panel">
-        <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 추정합니다. 헤더를 누르면 정렬됩니다.</p>
         <p class="legend">b_wp 이항 최종승률 · b_rk 이항 최종순위 · p_wp 피타 최종승률 · p_rk 피타 최종순위 · v_wp 상대전적 최종승률 · v_rk 상대전적 최종순위</p>
         <div id="sim-table"></div>
 
         <article class="section">
           <h2>KT · 삼성 · LG · KIA 최종승률 사다리</h2>
-          <p class="hint">네 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
           <div id="race-ladder"></div>
           <div id="remain-boards"></div>
         </article>
+        <div class="tab-notes">
+          <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 추정합니다. 헤더를 누르면 정렬됩니다.</p>
+          <p class="hint">네 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
+          <p class="hint">순위 순. 상대전적 승률 = 승 / (승+패). 잔여 = 16 − (승+패+무).</p>
+        </div>
       </section>
 
       <section id="panel-records" class="panel">
@@ -91,22 +96,17 @@
       </section>
 
       <section id="panel-history" class="panel">
-        <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 위 토글은 최근 기간, 아래 토글은 그 달만 봅니다. 3월은 4월과 같이 봅니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 전체시즌을 일별로 보면 7일 평균으로 다듬고, 최근 일자에서 확률이 높은 3개 순위만 그립니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
-        <div class="mc-toolbar">
+        <div class="hist-bar" role="group" aria-label="팀, 단위, 기간">
           <label class="field inline">
-            <span>팀</span>
             <select id="hist-team" aria-label="히스토리 기준 팀"></select>
           </label>
           <label class="field inline">
-            <span>단위</span>
             <select id="hist-bucket" aria-label="히스토리 단위">
               <option value="day">일별</option>
               <option value="week">주별</option>
               <option value="month">월별</option>
             </select>
           </label>
-        </div>
-        <div class="hist-toggles" role="group" aria-label="기간">
           <button type="button" data-hist-range="1m" class="on">최근 1개월</button>
           <button type="button" data-hist-range="3m">3개월</button>
           <button type="button" data-hist-range="season">전체시즌</button>
@@ -120,6 +120,9 @@
           <button type="button" data-hist-month="9">9월</button>
         </div>
         <div id="hist-chart"></div>
+        <div class="tab-notes">
+          <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 첫 줄은 팀·단위·기간, 둘째 줄은 그 달만 봅니다. 3월은 4월과 같이 봅니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 전체시즌을 일별로 보면 7일 평균으로 다듬고, 최근 일자에서 확률이 높은 3개 순위만 그립니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
+        </div>
       </section>
 
       <section id="panel-admin" class="panel">
@@ -185,6 +188,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script src="js/app.js?v=38"></script>
+    <script src="js/app.js?v=39"></script>
   </body>
 </html>

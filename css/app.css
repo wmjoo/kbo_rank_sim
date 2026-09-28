@@ -194,12 +194,27 @@ body {
   max-width: 6.5em;
 }
 
-#panel-history .mc-toolbar {
-  flex-wrap: wrap;
+.hist-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 0.78fr) minmax(0, 1.25fr) minmax(0, 0.85fr) minmax(0, 1.05fr);
+  gap: 4px;
+  margin: 4px 0;
+  align-items: stretch;
 }
 
-#hist-bucket {
-  min-width: 5.4em;
+.hist-bar .field.inline {
+  min-width: 0;
+}
+
+.hist-bar select,
+.hist-bar #hist-team,
+.hist-bar #hist-bucket {
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 2px;
+  font-size: 12px;
 }
 
 .hist-toggles {
@@ -213,6 +228,7 @@ body {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.hist-bar button,
 .hist-toggles button {
   appearance: none;
   -webkit-appearance: none;
@@ -234,6 +250,13 @@ body {
   font-size: 12px;
 }
 
+.hist-bar button {
+  font-size: 10px;
+  padding: 4px 1px;
+  white-space: nowrap;
+}
+
+.hist-bar button.on,
 .hist-toggles button.on {
   background: var(--navy);
   color: #fff;
@@ -524,6 +547,19 @@ table.slim thead th.sorted::after {
   margin: 0 0 4px;
   font-size: 10px;
   color: var(--muted);
+}
+
+.tab-notes {
+  margin-top: 14px;
+}
+
+.tab-notes .hint {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.tab-notes .hint + .hint {
+  margin-top: 6px;
 }
 
 .legend {
