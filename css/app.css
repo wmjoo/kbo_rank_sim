@@ -188,9 +188,14 @@ body {
   min-height: 40px;
 }
 
-#mc-team {
+#mc-team,
+#hist-team {
   min-width: 4.8em;
   max-width: 6.5em;
+}
+
+#hist-range {
+  min-width: 7.6em;
 }
 
 .mc-toolbar .btn {
@@ -248,6 +253,10 @@ body {
   margin: 0 0 6px;
   font-size: 10px;
   color: var(--muted);
+}
+
+.hist-caption {
+  margin: 2px 0 4px;
 }
 
 .hist-chart {

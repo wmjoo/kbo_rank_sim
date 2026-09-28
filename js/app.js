@@ -15,6 +15,7 @@ const SEASON_GAMES = 144;
 const GAMES_PER_OPPONENT = 16;
 const FOCUS_TEAM = "LG";
 const FOCUS_TEAM_KEY = "kbo.focusTeam";
+const HIST_RANGE_KEY = "kbo.histRange";
 const RACE_TEAMS = ["KT", "삼성", "LG", "KIA"];
 const MC_METRICS = [
   { key: "binom", label: "이항", prior: "현재 승률", expected: "binomFinalPct" },
@@ -833,6 +834,55 @@ function historyPoints(team) {
     .sort((a, b) => String(a.asOf).localeCompare(String(b.asOf)));
 }
 
+function histRange() {
+  const value = $("hist-range")?.value || "1m";
+  return value === "3m" || value === "season" ? value : "1m";
+}
+
+function shiftMonths(iso, months) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, 1));
+  base.setUTCMonth(base.getUTCMonth() - months);
+  const last = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+function weekStart(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() - dow + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
+function sliceHistory(points, range) {
+  if (!points.length || range === "season") return points;
+  const cutoff = shiftMonths(points[points.length - 1].asOf, range === "3m" ? 3 : 1);
+  return points.filter((row) => row.asOf >= cutoff);
+}
+
+function weeklyAverage(points) {
+  const groups = new Map();
+  for (const row of points) {
+    const key = weekStart(row.asOf);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return [...groups.entries()].map(([start, rows]) => {
+    const end = rows[rows.length - 1].asOf;
+    return {
+      asOf: start,
+      label: end === rows[0].asOf && rows.length === 1 ? rows[0].asOf : `${rows[0].asOf}–${end}`,
+      weekly: true,
+      probs: Array.from({ length: 10 }, (_, idx) => {
+        const vals = rows.map((row) => row.probs[idx]).filter((value) => Number.isFinite(value));
+        if (!vals.length) return NaN;
+        return vals.reduce((sum, value) => sum + value, 0) / vals.length;
+      }),
+    };
+  });
+}
+
 function renderHistory() {
   const el = $("hist-chart");
   if (!el) return;
@@ -841,9 +891,17 @@ function renderHistory() {
     return;
   }
   const team = getFocusTeam();
-  const points = historyPoints(team);
-  if (!points.length) {
+  const range = histRange();
+  const all = historyPoints(team);
+  let points = sliceHistory(all, range);
+  const weekly = range === "season";
+  if (weekly) points = weeklyAverage(points);
+  if (!all.length) {
     el.innerHTML = `<p class="empty">저장된 몬테카를로 결과가 없습니다.</p>`;
+    return;
+  }
+  if (!points.length) {
+    el.innerHTML = `<p class="empty">이 기간에 저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
   const active = RANK_COLORS.map((_, idx) => idx).filter((idx) =>
@@ -880,7 +938,9 @@ function renderHistory() {
       const dots = points
         .map((row, i) => {
           const pctText = formatProb(row.probs[idx]);
-          return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="2.6" fill="${RANK_COLORS[idx]}"><title>${row.asOf} ${idx + 1}위 ${pctText}</title></circle>`;
+          const when = row.label || row.asOf;
+          const kind = row.weekly ? " 주 평균" : "";
+          return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="2.6" fill="${RANK_COLORS[idx]}"><title>${when}${kind} ${idx + 1}위 ${pctText}</title></circle>`;
         })
         .join("");
       return `<path d="${d}" fill="none" stroke="${RANK_COLORS[idx]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
@@ -891,7 +951,8 @@ function renderHistory() {
   const labels = points
     .map((row, i) => {
       if (!showTick(i)) return "";
-      const label = String(row.asOf).slice(5).replace("-", "/");
+      const tickDate = row.weekly ? String(row.label).slice(0, 10) : row.asOf;
+      const label = String(tickDate).slice(5).replace("-", "/");
       return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c564c">${label}</text>`;
     })
     .join("");
@@ -920,10 +981,31 @@ function renderHistory() {
     const on = active.includes(idx);
     return `<span class="${on ? "on" : ""}"><i class="hist-swatch" style="background:${RANK_COLORS[idx]}"></i>${idx + 1}위</span>`;
   }).join("");
-  el.innerHTML = `<svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} 일자별 순위 확률">
+  const spanEnd = (row) => String(row.label || row.asOf).slice(-10);
+  const spanStart = (row) => String(row.label || row.asOf).slice(0, 10);
+  const caption = weekly
+    ? `${spanStart(points[0])} – ${spanEnd(points[points.length - 1])} · 주별 평균`
+    : `${points[0].asOf} – ${points[points.length - 1].asOf}`;
+  el.innerHTML = `<p class="meta hist-caption">${escapeHtml(caption)}</p>
+    <svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} ${weekly ? "주별" : "일자별"} 순위 확률">
       ${grid}${lines}${pointLabels}${labels}
     </svg>
     <div class="hist-legend">${legend}</div>`;
+}
+
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      out[index] = await fn(items[index]);
+    }
+  }
+  const workers = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return out;
 }
 
 async function loadMcHistory() {
@@ -936,12 +1018,9 @@ async function loadMcHistory() {
       const prev = best.get(file.asOf);
       if (!prev || Number(file.n) > Number(prev.n)) best.set(file.asOf, file);
     });
-    const payloads = [];
-    for (const file of [...best.values()].sort((a, b) => String(a.asOf).localeCompare(String(b.asOf)))) {
-      const payload = await fetchJson(file.path);
-      if (payload?.results) payloads.push(payload);
-    }
-    state.mcHistory = payloads;
+    const chosen = [...best.values()].sort((a, b) => String(a.asOf).localeCompare(String(b.asOf)));
+    const loaded = await mapPool(chosen, 8, (file) => fetchJson(file.path));
+    state.mcHistory = loaded.filter((payload) => payload?.results);
   } catch {
     state.mcHistory = [];
   }
@@ -1489,6 +1568,15 @@ function bind() {
     setFocusTeam(e.target.value);
     renderHistory();
   });
+  const rangeSel = $("hist-range");
+  if (rangeSel) {
+    const saved = localStorage.getItem(HIST_RANGE_KEY);
+    if (saved === "1m" || saved === "3m" || saved === "season") rangeSel.value = saved;
+    rangeSel.addEventListener("change", () => {
+      localStorage.setItem(HIST_RANGE_KEY, rangeSel.value);
+      renderHistory();
+    });
+  }
   fillTeamSelect();
 
   const tab = location.hash.replace("#", "");

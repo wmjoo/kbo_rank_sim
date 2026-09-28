@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""2026-09-01~09-27 KBO 일자별 순위와 5만 회 몬테카를로를 채운다.
+"""2026 정규시즌 개막(03-28)부터 기준일까지 일자별 순위와 5만 회 몬테카를로를 채운다.
 
-순위·상대전적은 공식 일자별 순위 페이지. 득점·실점은 2026-09-27 공식 누적에서
-그 이후 정규시즌 경기 득점을 뺀 값이다.
+순위·상대전적은 공식 일자별 순위 페이지. 득점·실점은 기준일 공식 누적에서
+그 이후 정규시즌 경기 득점을 뺀 값이다. 경기가 없는 날은 공식 페이지가
+직전 경기일을 보여 주므로 건너뛴다.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import re
 import sys
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -31,8 +32,9 @@ ANCHOR = "2026-09-27"
 N = 50000
 SEASON_GAMES = 144
 GAMES_PER_OPPONENT = 16
-START = date(2026, 9, 1)
-END = date(2026, 9, 27)
+START = date(2026, 3, 28)
+END = date.fromisoformat(ANCHOR)
+KST = timezone(timedelta(hours=9))
 
 
 def http_get(url: str) -> str:
@@ -88,9 +90,8 @@ def page_as_of(html: str) -> str | None:
     return f"{year}-{int(month):02d}-{int(day):02d}"
 
 
-def fetch_games() -> list[tuple[str, str, int, str, int]]:
-    http_get(SCHED_PAGE)
-    payload = {"leId": "1", "srIdList": "0,9,6", "seasonId": "2026", "gameMonth": "09", "teamId": ""}
+def fetch_month_rows(month: int) -> list[dict]:
+    payload = {"leId": "1", "srIdList": "0,9,6", "seasonId": "2026", "gameMonth": f"{month:02d}", "teamId": ""}
     req = urllib.request.Request(
         SCHED_API,
         data=urllib.parse.urlencode(payload).encode(),
@@ -102,24 +103,29 @@ def fetch_games() -> list[tuple[str, str, int, str, int]]:
         },
     )
     with urllib.request.urlopen(req, timeout=30) as res:
-        rows = json.loads(res.read().decode("utf-8"))["rows"]
+        return json.loads(res.read().decode("utf-8"))["rows"]
+
+
+def fetch_games() -> list[tuple[str, str, int, str, int]]:
+    http_get(SCHED_PAGE)
 
     def strip(text: str) -> str:
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text or "")).strip()
 
     games = []
-    current = None
-    for row in rows:
-        cells = row["row"]
-        day = next((strip(cell["Text"]) for cell in cells if cell.get("Class") == "day"), None)
-        if day:
-            match = re.match(r"(\d{2})\.(\d{2})", day)
-            current = f"2026-{match.group(1)}-{match.group(2)}" if match else current
-        play = next((strip(cell["Text"]) for cell in cells if cell.get("Class") == "play"), "")
-        scored = re.match(r"([A-Z가-힣]+)\s+(\d+)\s+vs\s+(\d+)\s+([A-Z가-힣]+)", play)
-        if not scored or not current:
-            continue
-        games.append((current, scored.group(1), int(scored.group(2)), scored.group(4), int(scored.group(3))))
+    for month in range(START.month, END.month + 1):
+        current = None
+        for row in fetch_month_rows(month):
+            cells = row["row"]
+            day = next((strip(cell["Text"]) for cell in cells if cell.get("Class") == "day"), None)
+            if day:
+                match = re.match(r"(\d{2})\.(\d{2})", day)
+                current = f"2026-{match.group(1)}-{match.group(2)}" if match else current
+            play = next((strip(cell["Text"]) for cell in cells if cell.get("Class") == "play"), "")
+            scored = re.match(r"([A-Z가-힣]+)\s+(\d+)\s+vs\s+(\d+)\s+([A-Z가-힣]+)", play)
+            if not scored or not current:
+                continue
+            games.append((current, scored.group(1), int(scored.group(2)), scored.group(4), int(scored.group(3))))
     return games
 
 
@@ -308,25 +314,23 @@ def main() -> None:
     base_rs = column_map(anchor["hitter"], "R")
     base_ra = column_map(anchor["pitcher"], "R")
     games = fetch_games()
-    print(f"games {len(games)}")
+    game_dates = sorted({item[0] for item in games if START.isoformat() <= item[0] <= END.isoformat()})
+    print(f"games {len(games)} days {len(game_dates)}", flush=True)
 
     viewstate = http_get(RANK_URL)
-    day = START
-    while day <= END:
-        as_of = day.isoformat()
+    for as_of in game_dates:
+        day = date.fromisoformat(as_of)
         standings_path = STANDINGS / f"{as_of}.json"
         sim_path = MONTE / f"{as_of}_n{N}.json"
         if standings_path.exists() and sim_path.exists():
-            print(f"keep {as_of}")
-            day += timedelta(days=1)
+            print(f"keep {as_of}", flush=True)
             continue
         if not standings_path.exists():
             html, viewstate = fetch_rank_html(day, viewstate)
             got = page_as_of(html)
             if got != as_of:
-                print(f"skip {as_of} page={got}")
+                print(f"skip {as_of} page={got}", flush=True)
                 viewstate = http_get(RANK_URL)
-                day += timedelta(days=1)
                 continue
             tables = fetch_kbo.tables(html)
             rank = tables[0]
@@ -345,17 +349,17 @@ def main() -> None:
                     "schedule": SCHED_PAGE,
                     "runsAnchor": ANCHOR,
                 },
-                "runsNote": "득점·실점은 2026-09-27 공식 팀 득점·실점에서 그 다음 날부터 27일까지의 경기 득점을 뺀 값이다.",
+                "runsNote": f"득점·실점은 {ANCHOR} 공식 팀 득점·실점에서 그 다음 날부터 기준일까지의 경기 득점을 뺀 값이다.",
                 "rank": rank,
                 "h2h": h2h,
                 "hitter": runs_table(order, rs),
                 "pitcher": runs_table(order, ra),
             }
             standings_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            print(f"standings {as_of} g={rank[1][2]}")
+            print(f"standings {as_of} g={rank[1][2]}", flush=True)
         else:
             payload = json.loads(standings_path.read_text(encoding="utf-8"))
-            print(f"standings exists {as_of}")
+            print(f"standings exists {as_of}", flush=True)
 
         if not sim_path.exists():
             rank = payload["rank"]
@@ -382,17 +386,18 @@ def main() -> None:
                     }
                 )
             sim = simulate(teams, payload["h2h"], seed=int(day.strftime("%Y%m%d")))
+            ran = datetime.now(KST).replace(microsecond=0)
             out = {
                 "asOf": payload["asOf"],
                 "asOfLabel": payload["asOfLabel"],
-                "ranAt": "2026-09-28T14:09:00+09:00",
-                "ranDate": "2026-09-28",
-                "ranTime": "14:09:00",
+                "ranAt": ran.isoformat(),
+                "ranDate": ran.date().isoformat(),
+                "ranTime": ran.strftime("%H:%M:%S"),
                 "n": N,
                 "seasonGames": SEASON_GAMES,
                 "gamesPerOpponent": GAMES_PER_OPPONENT,
                 "method": "independent_bernoulli",
-                "note": "잔여 경기는 팀별 독립 베르누이. 맞대결에서 한 팀의 승이 다른 팀의 패가 되는 상관은 넣지 않음. 과거 일자는 공식 순위·상대전적과, 9월 27일 누적에서 되돌린 득점·실점을 사용.",
+                "note": f"잔여 경기는 팀별 독립 베르누이. 맞대결에서 한 팀의 승이 다른 팀의 패가 되는 상관은 넣지 않음. 과거 일자는 공식 순위·상대전적과, {ANCHOR} 누적에서 되돌린 득점·실점을 사용.",
                 "priors": {
                     "binom": {"type": "current_wp", "desc": "잔여 각 경기를 현재 승률 p=W/(W+L)로 추출"},
                     "pyth": {"type": "pythagorean", "exponent": 2, "desc": "잔여 각 경기를 피타고리안 승률로 추출"},
@@ -413,8 +418,7 @@ def main() -> None:
                 "results": sim["results"],
             }
             sim_path.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            print(f"sim {as_of}")
-        day += timedelta(days=1)
+            print(f"sim {as_of}", flush=True)
 
     write_indexes()
     print("indexes updated")
