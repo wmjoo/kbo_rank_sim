@@ -934,7 +934,7 @@ function renderHistory() {
 
   const W = 360;
   const H = 310;
-  const pad = { l: 32, r: 10, t: 16, b: 28 };
+  const pad = { l: 20, r: 12, t: 14, b: 16 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const xAt = (i) => pad.l + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
@@ -944,7 +944,7 @@ function renderHistory() {
     .map((v) => {
       const y = yAt(v);
       return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#eadfd4" stroke-width="1"/>
-        <text x="${pad.l - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="#8a8175">${Math.round(v * 100)}</text>`;
+        <text x="${pad.l - 2}" y="${y + 2}" text-anchor="end" font-size="6" fill="#8a8175">${Math.round(v * 100)}</text>`;
     })
     .join("");
   const lines = active
@@ -965,7 +965,27 @@ function renderHistory() {
     .join("");
   const stride = Math.max(1, Math.ceil(points.length / 7));
   const showTick = (i) => i % stride === 0 || i === points.length - 1;
-  const showMarker = (i) => i % 2 === 0 || i === points.length - 1;
+  const extremes = new Map();
+  for (const idx of active) {
+    const vals = points
+      .map((row) => row.probs[idx])
+      .filter((p) => Number.isFinite(p) && p >= HIST_MIN_P);
+    if (!vals.length) continue;
+    extremes.set(idx, { min: Math.min(...vals), max: Math.max(...vals) });
+  }
+  const isExtreme = (idx, p, kind) => {
+    const ext = extremes.get(idx);
+    return Boolean(ext && Number.isFinite(p) && p === ext[kind]);
+  };
+  const regularMarker = (i) => bucket !== "day" || i % 2 === 0 || i === points.length - 1;
+  const plotBottom = (pad.t + ih).toFixed(1);
+  const vgrid = points
+    .map((row, i) => {
+      if (!showTick(i)) return "";
+      const x = xAt(i).toFixed(1);
+      return `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${plotBottom}" stroke="#eadfd4" stroke-width="1"/>`;
+    })
+    .join("");
   const labels = points
     .map((row, i) => {
       if (!showTick(i)) return "";
@@ -973,26 +993,51 @@ function renderHistory() {
         row.bucket === "month"
           ? `${Number(String(row.monthKey).slice(5, 7))}월`
           : String(row.bucket === "week" ? String(row.label).slice(0, 10) : row.asOf).slice(5).replace("-", "/");
-      return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c564c">${label}</text>`;
+      return `<text x="${xAt(i).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="6" fill="#5c564c">${label}</text>`;
     })
     .join("");
   const pointLabels = points
     .map((row, i) => {
-      if (!showMarker(i)) return "";
-      const top = active
-        .map((idx) => ({ idx, p: row.probs[idx] }))
-        .filter((item) => Number.isFinite(item.p) && item.p >= HIST_MIN_P)
-        .sort((a, b) => b.p - a.p || a.idx - b.idx)
-        .slice(0, 3)
-        .sort((a, b) => yAt(a.p) - yAt(b.p));
+      const regular = regularMarker(i);
+      const seen = new Set();
+      const picked = [];
+      const push = (idx) => {
+        if (seen.has(idx)) return;
+        const p = row.probs[idx];
+        if (!Number.isFinite(p) || p < HIST_MIN_P) return;
+        seen.add(idx);
+        picked.push({
+          idx,
+          p,
+          emph: isExtreme(idx, p, "min") || isExtreme(idx, p, "max"),
+        });
+      };
+      if (regular) {
+        active
+          .map((idx) => ({ idx, p: row.probs[idx] }))
+          .filter((item) => Number.isFinite(item.p) && item.p >= HIST_MIN_P)
+          .sort((a, b) => b.p - a.p || a.idx - b.idx)
+          .slice(0, 3)
+          .forEach((item) => push(item.idx));
+        for (const idx of active) {
+          if (isExtreme(idx, row.probs[idx], "min") || isExtreme(idx, row.probs[idx], "max")) push(idx);
+        }
+      } else {
+        for (const idx of active) {
+          if (isExtreme(idx, row.probs[idx], "max")) push(idx);
+        }
+      }
+      if (!picked.length) return "";
+      picked.sort((a, b) => yAt(a.p) - yAt(b.p));
       let prevY = -Infinity;
-      return top
+      return picked
         .map((item) => {
           let y = yAt(item.p) - 7;
           if (y < prevY + 8) y = prevY + 8;
           if (y < 8) y = 8;
           prevY = y;
-          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="8" fill="${RANK_COLORS[item.idx]}">${(item.p * 100).toFixed(1)}%</text>`;
+          const emph = item.emph ? ` font-weight="700" text-decoration="underline"` : "";
+          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="8" fill="${RANK_COLORS[item.idx]}"${emph}>${(item.p * 100).toFixed(1)}%</text>`;
         })
         .join("");
     })
@@ -1006,7 +1051,7 @@ function renderHistory() {
   const caption = `${spanStart(points[0])} – ${spanEnd(points[points.length - 1])} · ${bucketLabel}`;
   el.innerHTML = `<p class="meta hist-caption">${escapeHtml(caption)}</p>
     <svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} ${bucketLabel} 순위 확률">
-      ${grid}${lines}${pointLabels}${labels}
+      ${grid}${vgrid}${lines}${pointLabels}${labels}
     </svg>
     <div class="hist-legend">${legend}</div>`;
 }
