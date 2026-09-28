@@ -965,6 +965,7 @@ function renderHistory() {
     .join("");
   const stride = Math.max(1, Math.ceil(points.length / 7));
   const showTick = (i) => i % stride === 0 || i === points.length - 1;
+  const showMarker = (i) => i % 2 === 0 || i === points.length - 1;
   const labels = points
     .map((row, i) => {
       if (!showTick(i)) return "";
@@ -977,7 +978,7 @@ function renderHistory() {
     .join("");
   const pointLabels = points
     .map((row, i) => {
-      if (!showTick(i)) return "";
+      if (!showMarker(i)) return "";
       const top = active
         .map((idx) => ({ idx, p: row.probs[idx] }))
         .filter((item) => Number.isFinite(item.p) && item.p >= HIST_MIN_P)
@@ -991,7 +992,7 @@ function renderHistory() {
           if (y < prevY + 8) y = prevY + 8;
           if (y < 8) y = 8;
           prevY = y;
-          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${RANK_COLORS[item.idx]}">${(item.p * 100).toFixed(1)}%</text>`;
+          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="8" fill="${RANK_COLORS[item.idx]}">${(item.p * 100).toFixed(1)}%</text>`;
         })
         .join("");
     })
