@@ -14,6 +14,7 @@ const TEAM_COLORS = {
 const SEASON_GAMES = 144;
 const GAMES_PER_OPPONENT = 16;
 const FOCUS_TEAM = "LG";
+const FOCUS_TEAM_KEY = "kbo.focusTeam";
 const RACE_TEAMS = ["KT", "삼성", "LG", "KIA"];
 const MC_METRICS = [
   { key: "binom", label: "이항", prior: "현재 승률", expected: "binomFinalPct" },
@@ -94,6 +95,8 @@ const state = {
   source: "snapshot",
   sim: [],
   mc: null,
+  mcHistory: null,
+  focusTeam: localStorage.getItem(FOCUS_TEAM_KEY) || FOCUS_TEAM,
   sorts: {
     sim: { key: "rank", dir: "asc" },
     rank: { col: 0, dir: "asc" },
@@ -630,6 +633,7 @@ function applyData(data, source) {
   state.data = data;
   state.source = source;
   state.sim = parseRank(data.rank);
+  fillTeamSelect();
   if (source === "live") {
     setStatus("live", `라이브 · ${data.asOfLabel || "방금 가져옴"}`);
   } else {
@@ -769,10 +773,178 @@ function redColorMap(p) {
   return { bg: `rgb(${rgb.join(",")})`, dark: luma < 0.55 };
 }
 
+function getFocusTeam() {
+  return state.focusTeam || FOCUS_TEAM;
+}
+
+function teamOptions() {
+  if (state.sim?.length) return state.sim.map((t) => t.name);
+  return Object.keys(TEAM_COLORS);
+}
+
+function fillTeamSelect() {
+  const names = teamOptions();
+  let cur = getFocusTeam();
+  if (!names.includes(cur)) cur = names.includes(FOCUS_TEAM) ? FOCUS_TEAM : names[0] || FOCUS_TEAM;
+  state.focusTeam = cur;
+  const html = names
+    .map((n) => `<option value="${escapeHtml(n)}"${n === cur ? " selected" : ""}>${escapeHtml(n)}</option>`)
+    .join("");
+  for (const id of ["mc-team", "hist-team"]) {
+    const sel = $(id);
+    if (sel) sel.innerHTML = html;
+  }
+}
+
+function setFocusTeam(name) {
+  const names = teamOptions();
+  const next = names.includes(name) ? name : FOCUS_TEAM;
+  state.focusTeam = next;
+  localStorage.setItem(FOCUS_TEAM_KEY, next);
+  for (const id of ["mc-team", "hist-team"]) {
+    const sel = $(id);
+    if (sel && sel.value !== next) sel.value = next;
+  }
+  if (state.mc?.results) renderMcResults(state.mc);
+  renderHistory();
+}
+
+const RANK_COLORS = [
+  "#c0392b",
+  "#e67e22",
+  "#c9a227",
+  "#1e8449",
+  "#148f77",
+  "#2471a3",
+  "#7d3c98",
+  "#c2185b",
+  "#6d4c41",
+  "#455a64",
+];
+
+function historyPoints(team) {
+  return (state.mcHistory || [])
+    .map((payload) => ({
+      asOf: payload.asOf,
+      n: payload.n,
+      probs: Array.from({ length: 10 }, (_, idx) => avgMinMax(metricRankValues(payload, team, idx)).avg),
+    }))
+    .filter((row) => row.asOf)
+    .sort((a, b) => String(a.asOf).localeCompare(String(b.asOf)));
+}
+
+function renderHistory() {
+  const el = $("hist-chart");
+  if (!el) return;
+  if (state.mcHistory == null) {
+    el.innerHTML = `<p class="empty">히스토리를 불러오는 중…</p>`;
+    return;
+  }
+  const team = getFocusTeam();
+  const points = historyPoints(team);
+  if (!points.length) {
+    el.innerHTML = `<p class="empty">저장된 몬테카를로 결과가 없습니다.</p>`;
+    return;
+  }
+  const active = RANK_COLORS.map((_, idx) => idx).filter((idx) =>
+    points.some((row) => Number.isFinite(row.probs[idx]) && row.probs[idx] > 0)
+  );
+  if (!active.length) {
+    el.innerHTML = `<p class="empty">${escapeHtml(team)}의 순위 확률이 없습니다.</p>`;
+    return;
+  }
+
+  const W = 360;
+  const H = 232;
+  const pad = { l: 34, r: 10, t: 12, b: 28 };
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+  const xAt = (i) => pad.l + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
+  const yAt = (p) => pad.t + (1 - Math.max(0, Math.min(1, p || 0))) * ih;
+  const yTicks = [1, 0.75, 0.5, 0.25, 0];
+  const grid = yTicks
+    .map((v) => {
+      const y = yAt(v);
+      return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#eadfd4" stroke-width="1"/>
+        <text x="${pad.l - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="#8a8175">${Math.round(v * 100)}</text>`;
+    })
+    .join("");
+  const lines = active
+    .map((idx) => {
+      const d = points
+        .map((row, i) => `${i ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(row.probs[idx]).toFixed(1)}`)
+        .join("");
+      const dots = points
+        .map((row, i) => {
+          const pctText = formatProb(row.probs[idx]);
+          return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="2.6" fill="${RANK_COLORS[idx]}"><title>${row.asOf} ${idx + 1}위 ${pctText}</title></circle>`;
+        })
+        .join("");
+      return `<path d="${d}" fill="none" stroke="${RANK_COLORS[idx]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+    })
+    .join("");
+  const labels = points
+    .map((row, i) => {
+      const label = String(row.asOf).slice(5).replace("-", "/");
+      return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c564c">${label}</text>`;
+    })
+    .join("");
+  const legend = active
+    .map(
+      (idx) =>
+        `<span><i class="hist-swatch" style="background:${RANK_COLORS[idx]}"></i>${idx + 1}위</span>`
+    )
+    .join("");
+  el.innerHTML = `<svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} 일자별 순위 확률">
+      ${grid}${lines}${labels}
+    </svg>
+    <div class="hist-legend">${legend}</div>`;
+}
+
+async function loadMcHistory() {
+  try {
+    const index = await fetchJson(DATA.simIndex);
+    const files = Array.isArray(index?.files) ? index.files : [];
+    const best = new Map();
+    files.forEach((file) => {
+      if (!file?.asOf || !file?.path) return;
+      const prev = best.get(file.asOf);
+      if (!prev || Number(file.n) > Number(prev.n)) best.set(file.asOf, file);
+    });
+    const payloads = [];
+    for (const file of [...best.values()].sort((a, b) => String(a.asOf).localeCompare(String(b.asOf)))) {
+      const payload = await fetchJson(file.path);
+      if (payload?.results) payloads.push(payload);
+    }
+    state.mcHistory = payloads;
+  } catch {
+    state.mcHistory = [];
+  }
+  renderHistory();
+}
+
+function possibleRankIndexes(payload, team) {
+  const hit = new Set();
+  for (const m of MC_METRICS) {
+    const row = (payload.results?.[m.key] || []).find((t) => t.name === team);
+    if (!row) continue;
+    rankProbs(row).forEach((p, i) => {
+      if (p > 0) hit.add(i);
+    });
+  }
+  if (!hit.size) return [0, 1, 2, 3];
+  const ranks = [...hit].sort((a, b) => a - b);
+  const lo = ranks[0];
+  const hi = ranks[ranks.length - 1];
+  return Array.from({ length: hi - lo + 1 }, (_, k) => lo + k);
+}
+
 function renderMcCards(payload) {
-  const stats = [0, 1, 2, 3].map((idx) => ({
+  const team = getFocusTeam();
+  const indexes = possibleRankIndexes(payload, team);
+  const stats = indexes.map((idx) => ({
     idx,
-    ...avgMinMax(metricRankValues(payload, FOCUS_TEAM, idx)),
+    ...avgMinMax(metricRankValues(payload, team, idx)),
   }));
   const peak = Math.max(0, ...stats.map((s) => (Number.isFinite(s.avg) ? s.avg : 0)));
   const cards = stats
@@ -788,8 +960,12 @@ function renderMcCards(payload) {
       </article>`;
     })
     .join("");
-  return `<div class="mc-cards">${cards}</div>
-    <p class="mc-cards-note">${escapeHtml(FOCUS_TEAM)} · 이항·피타·상대전적 평균 [최소–최대] · 배경은 0–100% 레드 스케일</p>`;
+  const rankLabel =
+    indexes.length === 1
+      ? `${indexes[0] + 1}위`
+      : `${indexes[0] + 1}–${indexes[indexes.length - 1] + 1}위`;
+  return `<div class="mc-cards" style="--mc-card-cols:${indexes.length}">${cards}</div>
+    <p class="mc-cards-note">${escapeHtml(team)} · 가능 ${rankLabel} · 이항·피타·상대전적 평균 [최소–최대] · 배경은 0–100% 레드 스케일</p>`;
 }
 
 function kstStamp() {
@@ -994,7 +1170,9 @@ function renderMcResults(payload) {
         const rankCells = ranks
           .map((p, i) => `<td${i === 0 ? ' class="mc-p1"' : ""}>${formatProb(p)}</td>`)
           .join("");
-        return `<tr${r.name === FOCUS_TEAM ? ' class="mc-focus"' : ""}>
+        const focus = r.name === getFocusTeam();
+        const focusStyle = focus ? ` style="--mc-focus:${TEAM_COLORS[r.name] || "#c30452"}"` : "";
+        return `<tr${focus ? ` class="mc-focus"${focusStyle}` : ""}>
         <td class="team">${teamDot(r.name)}</td>
         <td>${formatPct(r.expectedPct)}</td>
         ${rankCells}
@@ -1206,6 +1384,7 @@ function setTab(name) {
   });
   const hash = name === "sim" ? "#sim" : `#${name}`;
   history.replaceState(null, "", hash);
+  if (name === "history") renderHistory();
   if (name === "admin") {
     renderHelpMath();
     loadDailyList();
@@ -1278,15 +1457,23 @@ function bind() {
     e.preventDefault();
     startMonteCarlo();
   });
+  $("mc-team")?.addEventListener("change", (e) => {
+    setFocusTeam(e.target.value);
+  });
+  $("hist-team")?.addEventListener("change", (e) => {
+    setFocusTeam(e.target.value);
+  });
+  fillTeamSelect();
 
   const tab = location.hash.replace("#", "");
-  setTab(["sim", "scenario", "records", "admin"].includes(tab) ? tab : "sim");
+  setTab(["sim", "scenario", "records", "history", "admin"].includes(tab) ? tab : "sim");
 }
 
 async function boot() {
   const snapshot = await loadSnapshot();
   applyData(snapshot, "snapshot");
   const mcReady = loadLatestMc();
+  const historyReady = loadMcHistory();
   try {
     const live = await importLive();
     applyData(live, "live");
@@ -1294,6 +1481,7 @@ async function boot() {
     setStatus("snap", `스냅샷 · ${snapshot.asOfLabel || ""}`);
   }
   await mcReady;
+  await historyReady;
   renderHelpMath();
   setTimeout(renderHelpMath, 0);
   setTimeout(renderHelpMath, 400);

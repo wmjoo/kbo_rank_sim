@@ -64,7 +64,7 @@ body {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   width: 100%;
   padding: 0;
 }
@@ -184,6 +184,15 @@ body {
   margin: 6px 0 4px;
 }
 
+.mc-toolbar .field.inline select {
+  min-height: 40px;
+}
+
+#mc-team {
+  min-width: 4.8em;
+  max-width: 6.5em;
+}
+
 .mc-toolbar .btn {
   flex: 1 0 auto;
   min-height: 40px;
@@ -192,7 +201,7 @@ body {
 
 .mc-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--mc-card-cols, 4), minmax(0, 1fr));
   gap: 4px;
   margin: 6px 0 2px;
 }
@@ -241,6 +250,33 @@ body {
   color: var(--muted);
 }
 
+.hist-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.hist-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.hist-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hist-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+
 .mc-block {
   margin: 10px 0 12px;
 }
@@ -251,12 +287,12 @@ body {
 }
 
 table.slim tbody tr.mc-focus td {
-  background: #f8eef2;
+  background: color-mix(in srgb, var(--mc-focus, #c30452) 9%, #fff);
 }
 
 table.slim tbody tr.mc-focus td.team {
-  background: #f3e4ea;
-  box-shadow: inset 3px 0 0 #c30452;
+  background: color-mix(in srgb, var(--mc-focus, #c30452) 16%, #fff);
+  box-shadow: inset 3px 0 0 var(--mc-focus, #c30452);
 }
 
 .mc-meta {
