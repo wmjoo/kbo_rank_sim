@@ -886,14 +886,18 @@ function renderHistory() {
       return `<path d="${d}" fill="none" stroke="${RANK_COLORS[idx]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
     })
     .join("");
+  const stride = Math.max(1, Math.ceil(points.length / 7));
+  const showTick = (i) => i % stride === 0 || i === points.length - 1;
   const labels = points
     .map((row, i) => {
+      if (!showTick(i)) return "";
       const label = String(row.asOf).slice(5).replace("-", "/");
       return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c564c">${label}</text>`;
     })
     .join("");
   const pointLabels = points
     .map((row, i) => {
+      if (!showTick(i)) return "";
       const top = active
         .map((idx) => ({ idx, p: row.probs[idx] }))
         .filter((item) => Number.isFinite(item.p) && item.p > 0)
