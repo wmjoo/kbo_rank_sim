@@ -6,7 +6,7 @@
     <title>KBO 순위 시뮬레이터</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=30" />
+    <link rel="stylesheet" href="css/app.css?v=31" />
   </head>
   <body>
     <header class="app-header">
@@ -91,19 +91,11 @@
       </section>
 
       <section id="panel-history" class="panel">
-        <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
+        <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 위 토글은 최근 기간, 아래 토글은 그 달만 봅니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
         <div class="mc-toolbar">
           <label class="field inline">
             <span>팀</span>
             <select id="hist-team" aria-label="히스토리 기준 팀"></select>
-          </label>
-          <label class="field inline">
-            <span>기간</span>
-            <select id="hist-range" aria-label="히스토리 기간">
-              <option value="1m" selected>최근 1달</option>
-              <option value="3m">최근 3개월</option>
-              <option value="season">전체 시즌</option>
-            </select>
           </label>
           <label class="field inline">
             <span>단위</span>
@@ -113,6 +105,20 @@
               <option value="month">월별</option>
             </select>
           </label>
+        </div>
+        <div class="hist-toggles" role="group" aria-label="기간">
+          <button type="button" data-hist-range="1m" class="on">최근 1개월</button>
+          <button type="button" data-hist-range="3m">3개월</button>
+          <button type="button" data-hist-range="season">전체시즌</button>
+        </div>
+        <div class="hist-toggles hist-months" role="group" aria-label="월">
+          <button type="button" data-hist-month="3">3월</button>
+          <button type="button" data-hist-month="4">4월</button>
+          <button type="button" data-hist-month="5">5월</button>
+          <button type="button" data-hist-month="6">6월</button>
+          <button type="button" data-hist-month="7">7월</button>
+          <button type="button" data-hist-month="8">8월</button>
+          <button type="button" data-hist-month="9">9월</button>
         </div>
         <div id="hist-chart"></div>
       </section>
@@ -180,6 +186,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script src="js/app.js?v=34"></script>
+    <script src="js/app.js?v=36"></script>
   </body>
 </html>

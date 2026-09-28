@@ -837,9 +837,27 @@ function historyPoints(team) {
 const HIST_BUCKET_DEFAULT = { "1m": "day", "3m": "week", season: "month" };
 const HIST_MIN_P = 0.01;
 
-function histRange() {
-  const value = $("hist-range")?.value || "1m";
-  return value === "3m" || value === "season" ? value : "1m";
+function histSelection() {
+  return state.histView || { kind: "range", range: "1m" };
+}
+
+function syncHistToggles() {
+  const view = histSelection();
+  document.querySelectorAll("[data-hist-range]").forEach((btn) => {
+    btn.classList.toggle("on", view.kind === "range" && btn.dataset.histRange === view.range);
+  });
+  document.querySelectorAll("[data-hist-month]").forEach((btn) => {
+    btn.classList.toggle("on", view.kind === "month" && Number(btn.dataset.histMonth) === view.month);
+  });
+}
+
+function setHistView(view) {
+  state.histView = view;
+  const stored = view.kind === "month" ? `month:${view.month}` : view.range;
+  localStorage.setItem(HIST_RANGE_KEY, stored);
+  syncHistToggles();
+  applyRangeDefaultBucket();
+  renderHistory();
 }
 
 function histBucket() {
@@ -850,7 +868,8 @@ function histBucket() {
 function applyRangeDefaultBucket() {
   const sel = $("hist-bucket");
   if (!sel) return;
-  sel.value = HIST_BUCKET_DEFAULT[histRange()] || "day";
+  const view = histSelection();
+  sel.value = view.kind === "month" ? "day" : HIST_BUCKET_DEFAULT[view.range] || "day";
 }
 
 function shiftMonths(iso, months) {
@@ -869,9 +888,15 @@ function weekStart(iso) {
   return dt.toISOString().slice(0, 10);
 }
 
-function sliceHistory(points, range) {
-  if (!points.length || range === "season") return points;
-  const cutoff = shiftMonths(points[points.length - 1].asOf, range === "3m" ? 3 : 1);
+function sliceHistory(points, view) {
+  if (!points.length) return points;
+  if (view.kind === "month") {
+    const year = String(points[points.length - 1].asOf).slice(0, 4);
+    const key = `${year}-${String(view.month).padStart(2, "0")}`;
+    return points.filter((row) => String(row.asOf).startsWith(key));
+  }
+  if (view.range === "season") return points;
+  const cutoff = shiftMonths(points[points.length - 1].asOf, view.range === "3m" ? 3 : 1);
   return points.filter((row) => row.asOf >= cutoff);
 }
 
@@ -913,17 +938,18 @@ function renderHistory() {
     return;
   }
   const team = getFocusTeam();
-  const range = histRange();
+  const view = histSelection();
   const bucket = histBucket();
   const all = historyPoints(team);
-  const period = sliceHistory(all, range);
+  const period = sliceHistory(all, view);
   const points = bucket === "day" ? period : bucketAverage(period, bucket);
   if (!all.length) {
     el.innerHTML = `<p class="empty">저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
   if (!period.length) {
-    el.innerHTML = `<p class="empty">이 기간에 저장된 몬테카를로 결과가 없습니다.</p>`;
+    const label = view.kind === "month" ? `${view.month}월` : "이 기간";
+    el.innerHTML = `<p class="empty">${label}에 저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
   const active = ranksAtLeastOnePercent(period);
@@ -957,7 +983,7 @@ function renderHistory() {
           const pctText = formatProb(row.probs[idx]);
           const when = row.label || row.asOf;
           const kind = row.bucket === "week" ? " 주 평균" : row.bucket === "month" ? " 월 평균" : "";
-          return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="2.6" fill="${RANK_COLORS[idx]}"><title>${when}${kind} ${idx + 1}위 ${pctText}</title></circle>`;
+          return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="${bucket === "day" ? "1.5" : "2.6"}" fill="${RANK_COLORS[idx]}"><title>${when}${kind} ${idx + 1}위 ${pctText}</title></circle>`;
         })
         .join("");
       return `<path d="${d}" fill="none" stroke="${RANK_COLORS[idx]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
@@ -977,7 +1003,7 @@ function renderHistory() {
     const ext = extremes.get(idx);
     return Boolean(ext && Number.isFinite(p) && p === ext[kind]);
   };
-  const regularMarker = (i) => bucket !== "day" || i % 2 === 0 || i === points.length - 1;
+  const regularMarker = (i) => (bucket === "day" ? i % 3 === 0 || i === points.length - 1 : true);
   const plotBottom = (pad.t + ih).toFixed(1);
   const vgrid = points
     .map((row, i) => {
@@ -1022,7 +1048,7 @@ function renderHistory() {
         for (const idx of active) {
           if (isExtreme(idx, row.probs[idx], "min") || isExtreme(idx, row.probs[idx], "max")) push(idx);
         }
-      } else {
+      } else if (bucket !== "day") {
         for (const idx of active) {
           if (isExtreme(idx, row.probs[idx], "max")) push(idx);
         }
@@ -1631,16 +1657,22 @@ function bind() {
     setFocusTeam(e.target.value);
     renderHistory();
   });
-  const rangeSel = $("hist-range");
-  if (rangeSel) {
-    const saved = localStorage.getItem(HIST_RANGE_KEY);
-    if (saved === "1m" || saved === "3m" || saved === "season") rangeSel.value = saved;
-    rangeSel.addEventListener("change", () => {
-      localStorage.setItem(HIST_RANGE_KEY, rangeSel.value);
-      applyRangeDefaultBucket();
-      renderHistory();
-    });
+  const rangeSel = localStorage.getItem(HIST_RANGE_KEY) || "1m";
+  if (rangeSel.startsWith("month:")) {
+    const month = Number(rangeSel.slice(6));
+    state.histView = month >= 3 && month <= 9 ? { kind: "month", month } : { kind: "range", range: "1m" };
+  } else if (rangeSel === "3m" || rangeSel === "season") {
+    state.histView = { kind: "range", range: rangeSel };
+  } else {
+    state.histView = { kind: "range", range: "1m" };
   }
+  syncHistToggles();
+  document.querySelectorAll("[data-hist-range]").forEach((btn) => {
+    btn.addEventListener("click", () => setHistView({ kind: "range", range: btn.dataset.histRange }));
+  });
+  document.querySelectorAll("[data-hist-month]").forEach((btn) => {
+    btn.addEventListener("click", () => setHistView({ kind: "month", month: Number(btn.dataset.histMonth) }));
+  });
   applyRangeDefaultBucket();
   $("hist-bucket")?.addEventListener("change", () => renderHistory());
   fillTeamSelect();
