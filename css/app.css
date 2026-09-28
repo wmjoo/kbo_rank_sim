@@ -196,7 +196,7 @@ body {
 
 .hist-bar {
   display: grid;
-  grid-template-columns: minmax(0, 0.72fr) minmax(0, 0.78fr) minmax(0, 1.25fr) minmax(0, 0.85fr) minmax(0, 1.05fr);
+  grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 4px;
   margin: 4px 0;
   align-items: stretch;
@@ -256,11 +256,22 @@ body {
   white-space: nowrap;
 }
 
-.hist-bar button.on,
-.hist-toggles button.on {
+.hist-bar button.on {
   background: var(--navy);
   color: #fff;
   border-color: var(--navy);
+}
+
+.hist-months button {
+  background: #f3ead2;
+  border-color: #c9b27a;
+  color: #6d5620;
+}
+
+.hist-months button.on {
+  background: #8d6b1f;
+  border-color: #8d6b1f;
+  color: #fffaf0;
 }
 
 .mc-toolbar .btn {
