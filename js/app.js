@@ -810,16 +810,16 @@ function setFocusTeam(name) {
 }
 
 const RANK_COLORS = [
-  "#c0392b",
-  "#e67e22",
-  "#c9a227",
-  "#1e8449",
-  "#148f77",
-  "#2471a3",
-  "#7d3c98",
-  "#c2185b",
-  "#6d4c41",
-  "#455a64",
+  "#e6194b",
+  "#4363d8",
+  "#f58231",
+  "#3cb44b",
+  "#911eb4",
+  "#0096c7",
+  "#f032e6",
+  "#9a6324",
+  "#000075",
+  "#808000",
 ];
 
 function historyPoints(team) {
@@ -855,18 +855,18 @@ function renderHistory() {
   }
 
   const W = 360;
-  const H = 232;
-  const pad = { l: 34, r: 10, t: 12, b: 28 };
+  const H = 420;
+  const pad = { l: 32, r: 10, t: 16, b: 28 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const xAt = (i) => pad.l + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
   const yAt = (p) => pad.t + (1 - Math.max(0, Math.min(1, p || 0))) * ih;
-  const yTicks = [1, 0.75, 0.5, 0.25, 0];
+  const yTicks = Array.from({ length: 11 }, (_, i) => i / 10);
   const grid = yTicks
     .map((v) => {
       const y = yAt(v);
       return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#eadfd4" stroke-width="1"/>
-        <text x="${pad.l - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="#8a8175">${Math.round(v * 100)}</text>`;
+        <text x="${pad.l - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="#8a8175">${Math.round(v * 100)}</text>`;
     })
     .join("");
   const lines = active
@@ -889,6 +889,26 @@ function renderHistory() {
       return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c564c">${label}</text>`;
     })
     .join("");
+  const pointLabels = points
+    .map((row, i) => {
+      const top = active
+        .map((idx) => ({ idx, p: row.probs[idx] }))
+        .filter((item) => Number.isFinite(item.p) && item.p > 0)
+        .sort((a, b) => b.p - a.p || a.idx - b.idx)
+        .slice(0, 3)
+        .sort((a, b) => yAt(a.p) - yAt(b.p));
+      let prevY = -Infinity;
+      return top
+        .map((item) => {
+          let y = yAt(item.p) - 7;
+          if (y < prevY + 8) y = prevY + 8;
+          if (y < 8) y = 8;
+          prevY = y;
+          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${RANK_COLORS[item.idx]}">${(item.p * 100).toFixed(1)}%</text>`;
+        })
+        .join("");
+    })
+    .join("");
   const legend = active
     .map(
       (idx) =>
@@ -896,7 +916,7 @@ function renderHistory() {
     )
     .join("");
   el.innerHTML = `<svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} 일자별 순위 확률">
-      ${grid}${lines}${labels}
+      ${grid}${lines}${pointLabels}${labels}
     </svg>
     <div class="hist-legend">${legend}</div>`;
 }
@@ -1462,6 +1482,7 @@ function bind() {
   });
   $("hist-team")?.addEventListener("change", (e) => {
     setFocusTeam(e.target.value);
+    renderHistory();
   });
   fillTeamSelect();
 
