@@ -847,7 +847,8 @@ function syncHistToggles() {
     btn.classList.toggle("on", view.kind === "range" && btn.dataset.histRange === view.range);
   });
   document.querySelectorAll("[data-hist-month]").forEach((btn) => {
-    btn.classList.toggle("on", view.kind === "month" && Number(btn.dataset.histMonth) === view.month);
+    const month = view.month === 3 || view.month === 4 ? 34 : view.month;
+    btn.classList.toggle("on", view.kind === "month" && Number(btn.dataset.histMonth) === month);
   });
 }
 
@@ -892,8 +893,11 @@ function sliceHistory(points, view) {
   if (!points.length) return points;
   if (view.kind === "month") {
     const year = String(points[points.length - 1].asOf).slice(0, 4);
-    const key = `${year}-${String(view.month).padStart(2, "0")}`;
-    return points.filter((row) => String(row.asOf).startsWith(key));
+    const months = view.month === 34 || view.month === 3 || view.month === 4 ? [3, 4] : [view.month];
+    return points.filter((row) => {
+      const [y, m] = String(row.asOf).split("-");
+      return y === year && months.includes(Number(m));
+    });
   }
   if (view.range === "season") return points;
   const cutoff = shiftMonths(points[points.length - 1].asOf, view.range === "3m" ? 3 : 1);
@@ -924,6 +928,34 @@ function bucketAverage(points, kind) {
   });
 }
 
+function smoothProbs(points, window) {
+  const half = Math.floor(window / 2);
+  return points.map((row, i) => ({
+    ...row,
+    probs: row.probs.map((_, idx) => {
+      let sum = 0;
+      let count = 0;
+      for (let j = Math.max(0, i - half); j <= Math.min(points.length - 1, i + half); j++) {
+        const value = points[j].probs[idx];
+        if (!Number.isFinite(value)) continue;
+        sum += value;
+        count += 1;
+      }
+      return count ? sum / count : NaN;
+    }),
+  }));
+}
+
+function topRankIndexes(row, n) {
+  return row.probs
+    .map((p, idx) => ({ idx, p: Number.isFinite(p) ? p : -Infinity }))
+    .filter((item) => item.p > -Infinity)
+    .sort((a, b) => b.p - a.p || a.idx - b.idx)
+    .slice(0, n)
+    .map((item) => item.idx)
+    .sort((a, b) => a - b);
+}
+
 function ranksAtLeastOnePercent(points) {
   return RANK_COLORS.map((_, idx) => idx).filter((idx) =>
     points.some((row) => Number.isFinite(row.probs[idx]) && row.probs[idx] >= HIST_MIN_P)
@@ -942,17 +974,18 @@ function renderHistory() {
   const bucket = histBucket();
   const all = historyPoints(team);
   const period = sliceHistory(all, view);
-  const points = bucket === "day" ? period : bucketAverage(period, bucket);
+  const seasonDaily = view.kind === "range" && view.range === "season" && bucket === "day";
+  const points = bucket === "day" ? (seasonDaily ? smoothProbs(period, 7) : period) : bucketAverage(period, bucket);
   if (!all.length) {
     el.innerHTML = `<p class="empty">저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
   if (!period.length) {
-    const label = view.kind === "month" ? `${view.month}월` : "이 기간";
+    const label = view.kind === "month" ? (view.month === 34 ? "3·4월" : `${view.month}월`) : "이 기간";
     el.innerHTML = `<p class="empty">${label}에 저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
-  const active = ranksAtLeastOnePercent(period);
+  const active = seasonDaily ? topRankIndexes(period[period.length - 1], 3) : ranksAtLeastOnePercent(period);
   if (!active.length) {
     el.innerHTML = `<p class="empty">${escapeHtml(team)}은 이 기간에 1% 이상인 순위가 없습니다.</p>`;
     return;
@@ -978,14 +1011,16 @@ function renderHistory() {
       const d = points
         .map((row, i) => `${i ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(row.probs[idx]).toFixed(1)}`)
         .join("");
-      const dots = points
-        .map((row, i) => {
-          const pctText = formatProb(row.probs[idx]);
-          const when = row.label || row.asOf;
-          const kind = row.bucket === "week" ? " 주 평균" : row.bucket === "month" ? " 월 평균" : "";
-          return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="${bucket === "day" ? "1.5" : "2.6"}" fill="${RANK_COLORS[idx]}"><title>${when}${kind} ${idx + 1}위 ${pctText}</title></circle>`;
-        })
-        .join("");
+      const dots = seasonDaily
+        ? ""
+        : points
+            .map((row, i) => {
+              const pctText = formatProb(row.probs[idx]);
+              const when = row.label || row.asOf;
+              const kind = row.bucket === "week" ? " 주 평균" : row.bucket === "month" ? " 월 평균" : "";
+              return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="${bucket === "day" ? "1.5" : "2.6"}" fill="${RANK_COLORS[idx]}"><title>${when}${kind} ${idx + 1}위 ${pctText}</title></circle>`;
+            })
+            .join("");
       return `<path d="${d}" fill="none" stroke="${RANK_COLORS[idx]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
     })
     .join("");
@@ -1003,7 +1038,10 @@ function renderHistory() {
     const ext = extremes.get(idx);
     return Boolean(ext && Number.isFinite(p) && p === ext[kind]);
   };
-  const regularMarker = (i) => (bucket === "day" ? i % 3 === 0 || i === points.length - 1 : true);
+  const regularMarker = (i) => {
+    if (seasonDaily) return showTick(i);
+    return bucket === "day" ? i % 3 === 0 || i === points.length - 1 : true;
+  };
   const plotBottom = (pad.t + ih).toFixed(1);
   const vgrid = points
     .map((row, i) => {
@@ -1073,7 +1111,7 @@ function renderHistory() {
     .join("");
   const spanEnd = (row) => String(row.label || row.asOf).slice(-10);
   const spanStart = (row) => String(row.label || row.asOf).slice(0, 10);
-  const bucketLabel = bucket === "week" ? "주별 평균" : bucket === "month" ? "월별 평균" : "일별";
+  const bucketLabel = seasonDaily ? "일별 · 7일 평균 · 상위 3순위" : bucket === "week" ? "주별 평균" : bucket === "month" ? "월별 평균" : "일별";
   const caption = `${spanStart(points[0])} – ${spanEnd(points[points.length - 1])} · ${bucketLabel}`;
   el.innerHTML = `<p class="meta hist-caption">${escapeHtml(caption)}</p>
     <svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} ${bucketLabel} 순위 확률">
@@ -1660,7 +1698,8 @@ function bind() {
   const rangeSel = localStorage.getItem(HIST_RANGE_KEY) || "1m";
   if (rangeSel.startsWith("month:")) {
     const month = Number(rangeSel.slice(6));
-    state.histView = month >= 3 && month <= 9 ? { kind: "month", month } : { kind: "range", range: "1m" };
+    const merged = month === 3 || month === 4 || month === 34 ? 34 : month;
+    state.histView = merged === 34 || (merged >= 5 && merged <= 9) ? { kind: "month", month: merged } : { kind: "range", range: "1m" };
   } else if (rangeSel === "3m" || rangeSel === "season") {
     state.histView = { kind: "range", range: rangeSel };
   } else {
