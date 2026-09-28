@@ -194,8 +194,16 @@ body {
   max-width: 6.5em;
 }
 
+#panel-history .mc-toolbar {
+  flex-wrap: wrap;
+}
+
 #hist-range {
   min-width: 7.6em;
+}
+
+#hist-bucket {
+  min-width: 5.4em;
 }
 
 .mc-toolbar .btn {

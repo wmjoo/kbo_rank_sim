@@ -6,7 +6,7 @@
     <title>KBO 순위 시뮬레이터</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=29" />
+    <link rel="stylesheet" href="css/app.css?v=30" />
   </head>
   <body>
     <header class="app-header">
@@ -91,7 +91,7 @@
       </section>
 
       <section id="panel-history" class="panel">
-        <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 기본은 최근 1달이고, 전체 시즌은 주별 평균입니다.</p>
+        <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
         <div class="mc-toolbar">
           <label class="field inline">
             <span>팀</span>
@@ -103,6 +103,14 @@
               <option value="1m" selected>최근 1달</option>
               <option value="3m">최근 3개월</option>
               <option value="season">전체 시즌</option>
+            </select>
+          </label>
+          <label class="field inline">
+            <span>단위</span>
+            <select id="hist-bucket" aria-label="히스토리 단위">
+              <option value="day">일별</option>
+              <option value="week">주별</option>
+              <option value="month">월별</option>
             </select>
           </label>
         </div>
@@ -172,6 +180,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script src="js/app.js?v=30"></script>
+    <script src="js/app.js?v=31"></script>
   </body>
 </html>

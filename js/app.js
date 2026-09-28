@@ -834,9 +834,23 @@ function historyPoints(team) {
     .sort((a, b) => String(a.asOf).localeCompare(String(b.asOf)));
 }
 
+const HIST_BUCKET_DEFAULT = { "1m": "day", "3m": "week", season: "month" };
+const HIST_MIN_P = 0.01;
+
 function histRange() {
   const value = $("hist-range")?.value || "1m";
   return value === "3m" || value === "season" ? value : "1m";
+}
+
+function histBucket() {
+  const value = $("hist-bucket")?.value || "day";
+  return value === "week" || value === "month" ? value : "day";
+}
+
+function applyRangeDefaultBucket() {
+  const sel = $("hist-bucket");
+  if (!sel) return;
+  sel.value = HIST_BUCKET_DEFAULT[histRange()] || "day";
 }
 
 function shiftMonths(iso, months) {
@@ -861,19 +875,21 @@ function sliceHistory(points, range) {
   return points.filter((row) => row.asOf >= cutoff);
 }
 
-function weeklyAverage(points) {
+function bucketAverage(points, kind) {
   const groups = new Map();
   for (const row of points) {
-    const key = weekStart(row.asOf);
+    const key = kind === "month" ? String(row.asOf).slice(0, 7) : weekStart(row.asOf);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
-  return [...groups.entries()].map(([start, rows]) => {
+  return [...groups.entries()].map(([key, rows]) => {
+    const start = rows[0].asOf;
     const end = rows[rows.length - 1].asOf;
     return {
-      asOf: start,
-      label: end === rows[0].asOf && rows.length === 1 ? rows[0].asOf : `${rows[0].asOf}–${end}`,
-      weekly: true,
+      asOf: kind === "month" ? `${key}-01` : key,
+      label: start === end ? start : `${start}–${end}`,
+      bucket: kind,
+      monthKey: kind === "month" ? key : "",
       probs: Array.from({ length: 10 }, (_, idx) => {
         const vals = rows.map((row) => row.probs[idx]).filter((value) => Number.isFinite(value));
         if (!vals.length) return NaN;
@@ -881,6 +897,12 @@ function weeklyAverage(points) {
       }),
     };
   });
+}
+
+function ranksAtLeastOnePercent(points) {
+  return RANK_COLORS.map((_, idx) => idx).filter((idx) =>
+    points.some((row) => Number.isFinite(row.probs[idx]) && row.probs[idx] >= HIST_MIN_P)
+  );
 }
 
 function renderHistory() {
@@ -892,26 +914,21 @@ function renderHistory() {
   }
   const team = getFocusTeam();
   const range = histRange();
+  const bucket = histBucket();
   const all = historyPoints(team);
-  let points = sliceHistory(all, range);
-  const weekly = range === "season";
-  if (weekly) points = weeklyAverage(points);
+  const period = sliceHistory(all, range);
+  const points = bucket === "day" ? period : bucketAverage(period, bucket);
   if (!all.length) {
     el.innerHTML = `<p class="empty">저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
-  if (!points.length) {
+  if (!period.length) {
     el.innerHTML = `<p class="empty">이 기간에 저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
-  const active = RANK_COLORS.map((_, idx) => idx).filter((idx) =>
-    points.some((row) => {
-      const p = row.probs[idx];
-      return Number.isFinite(p) && (p * 100).toFixed(1) !== "0.0";
-    })
-  );
+  const active = ranksAtLeastOnePercent(period);
   if (!active.length) {
-    el.innerHTML = `<p class="empty">${escapeHtml(team)}의 순위 확률이 없습니다.</p>`;
+    el.innerHTML = `<p class="empty">${escapeHtml(team)}은 이 기간에 1% 이상인 순위가 없습니다.</p>`;
     return;
   }
 
@@ -939,7 +956,7 @@ function renderHistory() {
         .map((row, i) => {
           const pctText = formatProb(row.probs[idx]);
           const when = row.label || row.asOf;
-          const kind = row.weekly ? " 주 평균" : "";
+          const kind = row.bucket === "week" ? " 주 평균" : row.bucket === "month" ? " 월 평균" : "";
           return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(row.probs[idx]).toFixed(1)}" r="2.6" fill="${RANK_COLORS[idx]}"><title>${when}${kind} ${idx + 1}위 ${pctText}</title></circle>`;
         })
         .join("");
@@ -951,8 +968,10 @@ function renderHistory() {
   const labels = points
     .map((row, i) => {
       if (!showTick(i)) return "";
-      const tickDate = row.weekly ? String(row.label).slice(0, 10) : row.asOf;
-      const label = String(tickDate).slice(5).replace("-", "/");
+      const label =
+        row.bucket === "month"
+          ? `${Number(String(row.monthKey).slice(5, 7))}월`
+          : String(row.bucket === "week" ? String(row.label).slice(0, 10) : row.asOf).slice(5).replace("-", "/");
       return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c564c">${label}</text>`;
     })
     .join("");
@@ -961,7 +980,7 @@ function renderHistory() {
       if (!showTick(i)) return "";
       const top = active
         .map((idx) => ({ idx, p: row.probs[idx] }))
-        .filter((item) => Number.isFinite(item.p) && item.p > 0)
+        .filter((item) => Number.isFinite(item.p) && item.p >= HIST_MIN_P)
         .sort((a, b) => b.p - a.p || a.idx - b.idx)
         .slice(0, 3)
         .sort((a, b) => yAt(a.p) - yAt(b.p));
@@ -977,17 +996,15 @@ function renderHistory() {
         .join("");
     })
     .join("");
-  const legend = RANK_COLORS.map((_, idx) => {
-    const on = active.includes(idx);
-    return `<span class="${on ? "on" : ""}"><i class="hist-swatch" style="background:${RANK_COLORS[idx]}"></i>${idx + 1}위</span>`;
-  }).join("");
+  const legend = active
+    .map((idx) => `<span class="on"><i class="hist-swatch" style="background:${RANK_COLORS[idx]}"></i>${idx + 1}위</span>`)
+    .join("");
   const spanEnd = (row) => String(row.label || row.asOf).slice(-10);
   const spanStart = (row) => String(row.label || row.asOf).slice(0, 10);
-  const caption = weekly
-    ? `${spanStart(points[0])} – ${spanEnd(points[points.length - 1])} · 주별 평균`
-    : `${points[0].asOf} – ${points[points.length - 1].asOf}`;
+  const bucketLabel = bucket === "week" ? "주별 평균" : bucket === "month" ? "월별 평균" : "일별";
+  const caption = `${spanStart(points[0])} – ${spanEnd(points[points.length - 1])} · ${bucketLabel}`;
   el.innerHTML = `<p class="meta hist-caption">${escapeHtml(caption)}</p>
-    <svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} ${weekly ? "주별" : "일자별"} 순위 확률">
+    <svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} ${bucketLabel} 순위 확률">
       ${grid}${lines}${pointLabels}${labels}
     </svg>
     <div class="hist-legend">${legend}</div>`;
@@ -1574,9 +1591,12 @@ function bind() {
     if (saved === "1m" || saved === "3m" || saved === "season") rangeSel.value = saved;
     rangeSel.addEventListener("change", () => {
       localStorage.setItem(HIST_RANGE_KEY, rangeSel.value);
+      applyRangeDefaultBucket();
       renderHistory();
     });
   }
+  applyRangeDefaultBucket();
+  $("hist-bucket")?.addEventListener("change", () => renderHistory());
   fillTeamSelect();
 
   const tab = location.hash.replace("#", "");
