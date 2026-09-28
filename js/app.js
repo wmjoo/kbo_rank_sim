@@ -847,7 +847,10 @@ function renderHistory() {
     return;
   }
   const active = RANK_COLORS.map((_, idx) => idx).filter((idx) =>
-    points.some((row) => Number.isFinite(row.probs[idx]) && row.probs[idx] > 0)
+    points.some((row) => {
+      const p = row.probs[idx];
+      return Number.isFinite(p) && (p * 100).toFixed(1) !== "0.0";
+    })
   );
   if (!active.length) {
     el.innerHTML = `<p class="empty">${escapeHtml(team)}의 순위 확률이 없습니다.</p>`;
@@ -855,7 +858,7 @@ function renderHistory() {
   }
 
   const W = 360;
-  const H = 420;
+  const H = 310;
   const pad = { l: 32, r: 10, t: 16, b: 28 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
@@ -909,12 +912,10 @@ function renderHistory() {
         .join("");
     })
     .join("");
-  const legend = active
-    .map(
-      (idx) =>
-        `<span><i class="hist-swatch" style="background:${RANK_COLORS[idx]}"></i>${idx + 1}위</span>`
-    )
-    .join("");
+  const legend = RANK_COLORS.map((_, idx) => {
+    const on = active.includes(idx);
+    return `<span class="${on ? "on" : ""}"><i class="hist-swatch" style="background:${RANK_COLORS[idx]}"></i>${idx + 1}위</span>`;
+  }).join("");
   el.innerHTML = `<svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} 일자별 순위 확률">
       ${grid}${lines}${pointLabels}${labels}
     </svg>

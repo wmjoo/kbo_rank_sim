@@ -262,13 +262,19 @@ body {
   gap: 4px 8px;
   margin: 6px 0 0;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .hist-legend span {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.hist-legend span.on {
+  font-weight: 800;
+  color: var(--ink, #2b2722);
 }
 
 .hist-swatch {
