@@ -739,6 +739,11 @@
       "asOf": "2026-09-30",
       "n": 50000,
       "path": "data/montecarlo/2026-09-30_n50000.json"
+    },
+    {
+      "asOf": "2026-10-01",
+      "n": 50000,
+      "path": "data/montecarlo/2026-10-01_n50000.json"
     }
   ]
 }
