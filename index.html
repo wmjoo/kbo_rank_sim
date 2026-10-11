@@ -6,7 +6,7 @@
     <title>KBO 순위 시뮬레이터</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=34" />
+    <link rel="stylesheet" href="css/app.css?v=35" />
   </head>
   <body>
     <header class="app-header">
@@ -50,6 +50,12 @@
       </section>
 
       <section id="panel-scenario" class="panel">
+        <div class="mc-toolbar">
+          <label class="field inline">
+            <span>팀</span>
+            <select id="sc-team" aria-label="시나리오 기준 팀"></select>
+          </label>
+        </div>
         <p class="legend">b_wp 이항 최종승률 · b_rk 이항 최종순위 · p_wp 피타 최종승률 · p_rk 피타 최종순위 · v_wp 상대전적 최종승률 · v_rk 상대전적 최종순위</p>
         <div id="sim-table"></div>
 
@@ -60,7 +66,7 @@
         </article>
         <div class="tab-notes">
           <p class="hint">잔여 경기는 무승부 없이 현재 승률·피타고리안 승률로 추정합니다. 헤더를 누르면 정렬됩니다.</p>
-          <p class="hint">네 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다.</p>
+          <p class="hint">네 팀의 잔여 승패 조합을 최종승률 높이로 맞춰 두었습니다. 같은 높이에 가까울수록 같은 승률입니다. 위에서 고른 팀이 닿을 수 있는 최종승률 밖은 빼 둡니다.</p>
           <p class="hint">순위 순. 상대전적 승률 = 승 / (승+패). 잔여 = 16 − (승+패+무).</p>
         </div>
       </section>
@@ -93,6 +99,18 @@
           <a class="src" href="https://www.koreabaseball.com/Record/Team/Pitcher/Basic1.aspx" target="_blank" rel="noreferrer">koreabaseball.com/Record/Team/Pitcher/Basic1.aspx</a>
           <div id="pitcher-table"></div>
         </article>
+
+        <article class="section">
+          <h2>팀 수비 순위</h2>
+          <a class="src" href="https://www.koreabaseball.com/Record/Team/Defense/Basic.aspx" target="_blank" rel="noreferrer">koreabaseball.com/Record/Team/Defense/Basic.aspx</a>
+          <div id="defense-table"></div>
+        </article>
+
+        <article class="section">
+          <h2>팀 주루 순위</h2>
+          <a class="src" href="https://www.koreabaseball.com/Record/Team/Runner/Basic.aspx" target="_blank" rel="noreferrer">koreabaseball.com/Record/Team/Runner/Basic.aspx</a>
+          <div id="runner-table"></div>
+        </article>
       </section>
 
       <section id="panel-history" class="panel">
@@ -117,11 +135,11 @@
           <button type="button" data-hist-month="6">6월</button>
           <button type="button" data-hist-month="7">7월</button>
           <button type="button" data-hist-month="8">8월</button>
-          <button type="button" data-hist-month="9">9월</button>
+          <button type="button" data-hist-month="910">9-10월</button>
         </div>
         <div id="hist-chart"></div>
         <div class="tab-notes">
-          <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 첫 줄은 팀·단위·기간, 둘째 줄은 그 달만 봅니다. 3월은 4월과 같이 봅니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 전체시즌을 일별로 보면 7일 평균으로 다듬고, 최근 일자에서 확률이 높은 3개 순위만 그립니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
+          <p class="hint">저장한 몬테카를로에서 같은 날은 반복이 가장 많은 결과를 씁니다. 각 선은 그 팀이 해당 순위에 들 확률이고, 이항·피타·상대전적 세 값의 평균입니다. 첫 줄은 팀·단위·기간, 둘째 줄은 그 달만 봅니다. 3월은 4월과, 9월은 10월과 같이 봅니다. 최근 1달은 일별, 3개월은 주별, 전체 시즌은 월별이 기본이고 단위는 바꿀 수 있습니다. 전체시즌을 일별로 보면 7일 평균으로 다듬고, 최근 일자에서 확률이 높은 3개 순위만 그립니다. 그 기간에 1% 미만인 순위는 뺍니다.</p>
         </div>
       </section>
 
@@ -188,6 +206,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script src="js/app.js?v=39"></script>
+    <script src="js/app.js?v=40"></script>
   </body>
 </html>

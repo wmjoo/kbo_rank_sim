@@ -18,6 +18,8 @@ SOURCES = {
     "rank": "https://www.koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx",
     "hitter": "https://www.koreabaseball.com/Record/Team/Hitter/Basic1.aspx",
     "pitcher": "https://www.koreabaseball.com/Record/Team/Pitcher/Basic1.aspx",
+    "defense": "https://www.koreabaseball.com/Record/Team/Defense/Basic.aspx",
+    "runner": "https://www.koreabaseball.com/Record/Team/Runner/Basic.aspx",
 }
 
 
@@ -92,6 +94,13 @@ def first_table(html: str) -> list[list[str]]:
     return tables(html)[0]
 
 
+def optional_table(url: str) -> list[list[str]]:
+    try:
+        return first_table(fetch(url))
+    except Exception:
+        return []
+
+
 def collect() -> dict:
     rank_html = fetch(SOURCES["rank"])
     hitter_html = fetch(SOURCES["hitter"])
@@ -112,6 +121,8 @@ def collect() -> dict:
         "h2h": rank_tables[1] if len(rank_tables) > 1 else [],
         "hitter": first_table(hitter_html),
         "pitcher": first_table(pitcher_html),
+        "defense": optional_table(SOURCES["defense"]),
+        "runner": optional_table(SOURCES["runner"]),
     }
 
 

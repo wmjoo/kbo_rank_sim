@@ -35,6 +35,8 @@ const SOURCES = {
   rank: "https://www.koreabaseball.com/Record/TeamRank/TeamRankDaily.aspx",
   hitter: "https://www.koreabaseball.com/Record/Team/Hitter/Basic1.aspx",
   pitcher: "https://www.koreabaseball.com/Record/Team/Pitcher/Basic1.aspx",
+  defense: "https://www.koreabaseball.com/Record/Team/Defense/Basic.aspx",
+  runner: "https://www.koreabaseball.com/Record/Team/Runner/Basic.aspx",
 };
 
 function getToken() {
@@ -103,6 +105,8 @@ const state = {
     rank: { col: 0, dir: "asc" },
     hitter: { col: 0, dir: "asc" },
     pitcher: { col: 0, dir: "asc" },
+    defense: { col: 0, dir: "asc" },
+    runner: { col: 0, dir: "asc" },
     h2h: { col: 0, dir: "asc" },
   },
 };
@@ -176,6 +180,7 @@ function parseRank(rows) {
   if (!rows || rows.length < 2) return [];
   const runsFor = teamStatMap(state.data?.hitter, "R");
   const runsAgainst = teamStatMap(state.data?.pitcher, "R");
+  const earnedAgainst = teamStatMap(state.data?.pitcher, "ER");
   return rows.slice(1).map((row) => {
     const name = row[1];
     const g = Number(row[2]);
@@ -184,12 +189,15 @@ function parseRank(rows) {
     const t = Number(row[5]);
     const rs = runsFor[name];
     const ra = runsAgainst[name];
+    const er = earnedAgainst[name];
     return {
       name,
       g,
       w,
       l,
       t,
+      rs: Number.isFinite(rs) ? rs : null,
+      er: Number.isFinite(er) ? er : null,
       remain: Math.max(0, SEASON_GAMES - g),
       pyth: Number.isFinite(rs) && Number.isFinite(ra) ? pythagorean(rs, ra) : 0,
     };
@@ -356,7 +364,8 @@ function renderSim() {
     ["경기", "g", ""],
     ["승률", "pct", ""],
     ["잔여", "remain", ""],
-    ["피타", "pyth", ""],
+    ["득점", "rs", ""],
+    ["실점", "er", ""],
     ["b_wp", "binomFinalPct", ""],
     ["b_rk", "binomRank", ""],
     ["p_wp", "pythFinalPct", ""],
@@ -384,7 +393,8 @@ function renderSim() {
         <td>${t.g}</td>
         <td>${formatPct(t.pct)}</td>
         <td>${t.remain}</td>
-        <td>${formatPct(t.pyth)}</td>
+        <td>${Number.isFinite(t.rs) ? t.rs : "-"}</td>
+        <td>${Number.isFinite(t.er) ? t.er : "-"}</td>
         <td>${formatPct(t.binomFinalPct)}</td>
         <td>${t.binomRank}</td>
         <td>${formatPct(t.pythFinalPct)}</td>
@@ -425,15 +435,28 @@ function renderLadder() {
     return;
   }
 
-  const cols = teams.map((t) => ({ team: t, outcomes: remainOutcomes(t) }));
+  const focusName = getFocusTeam();
+  const focusTeam = (state.sim || []).find((t) => t.name === focusName);
+  const band = focusTeam ? remainOutcomes(focusTeam) : [];
+  const bandMin = band.length ? Math.min(...band.map((o) => o.pct)) : -Infinity;
+  const bandMax = band.length ? Math.max(...band.map((o) => o.pct)) : Infinity;
+  const inBand = (p) => p >= bandMin - 1e-9 && p <= bandMax + 1e-9;
+  const cols = teams.map((t) => ({
+    team: t,
+    outcomes: remainOutcomes(t).filter((o) => inBand(o.pct)),
+  }));
   const allPcts = cols.flatMap((c) => c.outcomes.map((o) => o.pct));
+  if (!allPcts.length) {
+    $("race-ladder").innerHTML = `<p class="empty">${escapeHtml(focusName)} 기준으로 겹치는 최종승률 시나리오가 없습니다.</p>`;
+    return;
+  }
   const maxP = Math.max(...allPcts);
   const minP = Math.min(...allPcts);
   const range = maxP - minP || 0.01;
-  const steps = cols.map((c) =>
-    c.outcomes.length > 1 ? Math.abs(c.outcomes[0].pct - c.outcomes[1].pct) : 0.01
-  );
-  const minStep = Math.min(...steps);
+  const steps = cols
+    .map((c) => (c.outcomes.length > 1 ? Math.abs(c.outcomes[0].pct - c.outcomes[1].pct) : null))
+    .filter((v) => v);
+  const minStep = steps.length ? Math.min(...steps) : 0.01;
   const rowH = 16;
   const pxPerWp = rowH / minStep;
   const height = range * pxPerWp + rowH;
@@ -457,7 +480,7 @@ function renderLadder() {
         .map((o) => {
           const top = (maxP - o.pct) * pxPerWp;
           const tint = teamTint(col.team.name);
-          const focus = col.team.name === FOCUS_TEAM;
+          const focus = col.team.name === focusName;
           const bg = focus ? tint.bg : "#fff";
           return `<div class="ladder-cell${focus ? " focus" : ""}" style="top:${top}px;height:${rowH - 2}px;border-left-color:${tint.border};background:${bg}">
             <b class="ladder-wl">${o.extraW}-${o.extraL}</b><span class="ladder-wp"> · ${formatPct(o.pct)}</span>
@@ -556,6 +579,8 @@ function renderRecords() {
   renderTable($("h2h-table"), data.h2h, state.sorts.h2h, "h2h");
   renderTable($("hitter-table"), data.hitter, state.sorts.hitter, "hitter");
   renderTable($("pitcher-table"), data.pitcher, state.sorts.pitcher, "pitcher");
+  renderTable($("defense-table"), data.defense, state.sorts.defense, "defense");
+  renderTable($("runner-table"), data.runner, state.sorts.runner, "runner");
 }
 
 function setStatus(kind, text) {
@@ -600,10 +625,12 @@ function asOfFromHtml(html) {
 
 async function importLive() {
   setStatus("snap", "KBO 기록실에서 가져오는 중…");
-  const [rank, hitter, pitcher] = await Promise.all([
+  const [rank, hitter, pitcher, defense, runner] = await Promise.all([
     fetchViaProxy(SOURCES.rank),
     fetchViaProxy(SOURCES.hitter),
     fetchViaProxy(SOURCES.pitcher),
+    fetchViaProxy(SOURCES.defense).catch(() => ({ rows: [] })),
+    fetchViaProxy(SOURCES.runner).catch(() => ({ rows: [] })),
   ]);
   const asof = asOfFromHtml(rank.html);
   return {
@@ -614,6 +641,8 @@ async function importLive() {
     h2h: pickH2h(rank.tables),
     hitter: hitter.rows,
     pitcher: pitcher.rows,
+    defense: defense.rows,
+    runner: runner.rows,
   };
 }
 
@@ -629,6 +658,11 @@ async function loadSnapshot() {
 function applyData(data, source) {
   if ((!data.h2h || data.h2h.length < 2) && state.data?.h2h?.length >= 2) {
     data = { ...data, h2h: state.data.h2h };
+  }
+  for (const key of ["defense", "runner"]) {
+    if ((!data[key] || data[key].length < 2) && state.data?.[key]?.length >= 2) {
+      data = { ...data, [key]: state.data[key] };
+    }
   }
   state.data = data;
   state.source = source;
@@ -790,7 +824,7 @@ function fillTeamSelect() {
   const html = names
     .map((n) => `<option value="${escapeHtml(n)}"${n === cur ? " selected" : ""}>${escapeHtml(n)}</option>`)
     .join("");
-  for (const id of ["mc-team", "hist-team"]) {
+  for (const id of ["mc-team", "hist-team", "sc-team"]) {
     const sel = $(id);
     if (sel) sel.innerHTML = html;
   }
@@ -801,11 +835,12 @@ function setFocusTeam(name) {
   const next = names.includes(name) ? name : FOCUS_TEAM;
   state.focusTeam = next;
   localStorage.setItem(FOCUS_TEAM_KEY, next);
-  for (const id of ["mc-team", "hist-team"]) {
+  for (const id of ["mc-team", "hist-team", "sc-team"]) {
     const sel = $(id);
     if (sel && sel.value !== next) sel.value = next;
   }
   if (state.mc?.results) renderMcResults(state.mc);
+  if (state.sim?.length) renderSim();
   renderHistory();
 }
 
@@ -840,13 +875,31 @@ function histSelection() {
   return state.histView || { kind: "range", range: "1m" };
 }
 
+function monthButtonValue(month) {
+  if (month === 3 || month === 4 || month === 34) return 34;
+  if (month === 9 || month === 10 || month === 910) return 910;
+  return month;
+}
+
+function histMonthList(month) {
+  if (month === 34 || month === 3 || month === 4) return [3, 4];
+  if (month === 910 || month === 9 || month === 10) return [9, 10];
+  return [month];
+}
+
+function histMonthLabel(month) {
+  if (month === 34 || month === 3 || month === 4) return "3·4월";
+  if (month === 910 || month === 9 || month === 10) return "9-10월";
+  return `${month}월`;
+}
+
 function syncHistToggles() {
   const view = histSelection();
   document.querySelectorAll("[data-hist-range]").forEach((btn) => {
     btn.classList.toggle("on", view.kind === "range" && btn.dataset.histRange === view.range);
   });
   document.querySelectorAll("[data-hist-month]").forEach((btn) => {
-    const month = view.month === 3 || view.month === 4 ? 34 : view.month;
+    const month = monthButtonValue(view.month);
     btn.classList.toggle("on", view.kind === "month" && Number(btn.dataset.histMonth) === month);
   });
 }
@@ -892,7 +945,7 @@ function sliceHistory(points, view) {
   if (!points.length) return points;
   if (view.kind === "month") {
     const year = String(points[points.length - 1].asOf).slice(0, 4);
-    const months = view.month === 34 || view.month === 3 || view.month === 4 ? [3, 4] : [view.month];
+    const months = histMonthList(view.month);
     return points.filter((row) => {
       const [y, m] = String(row.asOf).split("-");
       return y === year && months.includes(Number(m));
@@ -980,7 +1033,7 @@ function renderHistory() {
     return;
   }
   if (!period.length) {
-    const label = view.kind === "month" ? (view.month === 34 ? "3·4월" : `${view.month}월`) : "이 기간";
+    const label = view.kind === "month" ? histMonthLabel(view.month) : "이 기간";
     el.innerHTML = `<p class="empty">${label}에 저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
@@ -1037,9 +1090,12 @@ function renderHistory() {
     const ext = extremes.get(idx);
     return Boolean(ext && Number.isFinite(p) && p === ext[kind]);
   };
+  const oneMonthDaily = view.kind === "range" && view.range === "1m" && bucket === "day";
   const regularMarker = (i) => {
     if (seasonDaily) return showTick(i);
-    return bucket === "day" ? i % 3 === 0 || i === points.length - 1 : true;
+    if (bucket !== "day") return true;
+    const step = oneMonthDaily ? 2 : 3;
+    return i % step === 0 || i === points.length - 1;
   };
   const plotBottom = (pad.t + ih).toFixed(1);
   const vgrid = points
@@ -1570,21 +1626,94 @@ async function collectAndSave() {
   }
 }
 
+function contribLevel(count) {
+  if (count <= 0) return 0;
+  if (count === 1) return 1;
+  if (count === 2) return 2;
+  if (count === 3) return 3;
+  return 4;
+}
+
+function contribWeeks(year) {
+  const start = Date.UTC(year, 2, 1);
+  const end = Date.UTC(year, 9, 31);
+  const gridStart = start - new Date(start).getUTCDay() * 86400000;
+  const weeks = [];
+  for (let t = gridStart; t <= end; t += 7 * 86400000) {
+    const days = [];
+    for (let i = 0; i < 7; i += 1) {
+      const ms = t + i * 86400000;
+      const iso = new Date(ms).toISOString().slice(0, 10);
+      days.push({
+        iso,
+        inSeason: ms >= start && ms <= end,
+        month: new Date(ms).getUTCMonth(),
+        day: Number(iso.slice(8)),
+      });
+    }
+    weeks.push(days);
+  }
+  return weeks;
+}
+
+function renderContribCalendar(counts, standings, year) {
+  const weeks = contribWeeks(year);
+  const monthLabels = [];
+  for (let m = 2; m <= 9; m += 1) {
+    const idx = weeks.findIndex((days) => days.some((d) => d.inSeason && d.month === m && d.day === 1));
+    if (idx >= 0) monthLabels.push({ idx, text: `${m + 1}월` });
+  }
+  const months = `<div class="contrib-months" style="width:${weeks.length * 13 - 2}px">${monthLabels
+    .map((item) => `<span style="left:${item.idx * 13}px">${item.text}</span>`)
+    .join("")}</div>`;
+  const cells = weeks
+    .flatMap((days) => days)
+    .map((day) => {
+      if (!day.inSeason) return `<i class="contrib-cell out"></i>`;
+      const count = counts.get(day.iso) || 0;
+      const level = contribLevel(count);
+      const title = count ? `${day.iso} · ${count}건` : day.iso;
+      if (standings.has(day.iso)) {
+        const href = `https://github.com/${REPO.owner}/${REPO.name}/blob/${REPO.branch}/${DATA.standingsFile(day.iso)}`;
+        return `<a class="contrib-cell lv${level}" href="${href}" target="_blank" rel="noreferrer" title="${escapeHtml(title)}"></a>`;
+      }
+      return `<i class="contrib-cell lv${level}" title="${escapeHtml(title)}"></i>`;
+    })
+    .join("");
+  const legend = [0, 1, 2, 3, 4].map((lv) => `<i class="contrib-cell lv${lv}"></i>`).join("");
+  return `<div class="contrib">
+    <div class="contrib-scroll">
+      ${months}
+      <div class="contrib-body">
+        <div class="contrib-dows"><span></span><span>월</span><span></span><span>수</span><span></span><span>금</span><span></span></div>
+        <div class="contrib-grid">${cells}</div>
+      </div>
+    </div>
+    <div class="contrib-legend"><span>적음</span>${legend}<span>많음</span></div>
+  </div>`;
+}
+
 async function loadDailyList() {
   const box = $("daily-list");
   try {
-    const index = await fetchJson(DATA.standingsIndex);
-    const dates = [...(index?.files || [])].sort().reverse();
-    if (!dates.length) {
+    const [standingsIndex, simIndex] = await Promise.all([
+      fetchJson(DATA.standingsIndex),
+      fetchJson(DATA.simIndex).catch(() => ({ files: [] })),
+    ]);
+    const standings = new Set(standingsIndex?.files || []);
+    const counts = new Map();
+    standings.forEach((d) => counts.set(d, (counts.get(d) || 0) + 1));
+    (simIndex?.files || []).forEach((file) => {
+      if (!file?.asOf) return;
+      counts.set(file.asOf, (counts.get(file.asOf) || 0) + 1);
+    });
+    if (!counts.size) {
       box.innerHTML = `<p class="empty">아직 저장된 일자가 없습니다.</p>`;
       return;
     }
-    box.innerHTML = `<div class="daily-list">${dates
-      .map(
-        (d) =>
-          `<a href="https://github.com/${REPO.owner}/${REPO.name}/blob/${REPO.branch}/${DATA.standingsFile(d)}" target="_blank" rel="noreferrer">${d}</a>`
-      )
-      .join("")}</div>`;
+    const latest = [...counts.keys()].sort().at(-1);
+    const year = Number(String(latest).slice(0, 4)) || 2026;
+    box.innerHTML = renderContribCalendar(counts, standings, year);
   } catch (err) {
     box.innerHTML = `<p class="empty">${escapeHtml(err.message)}</p>`;
   }
@@ -1690,6 +1819,9 @@ function bind() {
   $("mc-team")?.addEventListener("change", (e) => {
     setFocusTeam(e.target.value);
   });
+  $("sc-team")?.addEventListener("change", (e) => {
+    setFocusTeam(e.target.value);
+  });
   $("hist-team")?.addEventListener("change", (e) => {
     setFocusTeam(e.target.value);
     renderHistory();
@@ -1697,8 +1829,11 @@ function bind() {
   const rangeSel = localStorage.getItem(HIST_RANGE_KEY) || "1m";
   if (rangeSel.startsWith("month:")) {
     const month = Number(rangeSel.slice(6));
-    const merged = month === 3 || month === 4 || month === 34 ? 34 : month;
-    state.histView = merged === 34 || (merged >= 5 && merged <= 9) ? { kind: "month", month: merged } : { kind: "range", range: "1m" };
+    const merged = monthButtonValue(month);
+    state.histView =
+      merged === 34 || merged === 910 || (merged >= 5 && merged <= 8)
+        ? { kind: "month", month: merged }
+        : { kind: "range", range: "1m" };
   } else if (rangeSel === "3m" || rangeSel === "season") {
     state.histView = { kind: "range", range: rangeSel };
   } else {
