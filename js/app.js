@@ -1634,61 +1634,37 @@ function contribLevel(count) {
   return 4;
 }
 
-function contribWeeks(year) {
-  const start = Date.UTC(year, 2, 1);
-  const end = Date.UTC(year, 9, 31);
-  const gridStart = start - new Date(start).getUTCDay() * 86400000;
-  const weeks = [];
-  for (let t = gridStart; t <= end; t += 7 * 86400000) {
-    const days = [];
-    for (let i = 0; i < 7; i += 1) {
-      const ms = t + i * 86400000;
-      const iso = new Date(ms).toISOString().slice(0, 10);
-      days.push({
-        iso,
-        inSeason: ms >= start && ms <= end,
-        month: new Date(ms).getUTCMonth(),
-        day: Number(iso.slice(8)),
-      });
-    }
-    weeks.push(days);
+function monthDayIso(year, month, day) {
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  if (dt.getUTCMonth() !== month - 1) return "";
+  return dt.toISOString().slice(0, 10);
+}
+
+function contribCell(iso, counts, standings) {
+  if (!iso) return `<i class="contrib-cell out"></i>`;
+  const count = counts.get(iso) || 0;
+  const level = contribLevel(count);
+  const title = count ? `${iso} · ${count}건` : iso;
+  if (standings.has(iso)) {
+    const href = `https://github.com/${REPO.owner}/${REPO.name}/blob/${REPO.branch}/${DATA.standingsFile(iso)}`;
+    return `<a class="contrib-cell lv${level}" href="${href}" target="_blank" rel="noreferrer" title="${escapeHtml(title)}"></a>`;
   }
-  return weeks;
+  return `<i class="contrib-cell lv${level}" title="${escapeHtml(title)}"></i>`;
 }
 
 function renderContribCalendar(counts, standings, year) {
-  const weeks = contribWeeks(year);
-  const monthLabels = [];
-  for (let m = 2; m <= 9; m += 1) {
-    const idx = weeks.findIndex((days) => days.some((d) => d.inSeason && d.month === m && d.day === 1));
-    if (idx >= 0) monthLabels.push({ idx, text: `${m + 1}월` });
-  }
-  const months = `<div class="contrib-months" style="width:${weeks.length * 13 - 2}px">${monthLabels
-    .map((item) => `<span style="left:${item.idx * 13}px">${item.text}</span>`)
-    .join("")}</div>`;
-  const cells = weeks
-    .flatMap((days) => days)
-    .map((day) => {
-      if (!day.inSeason) return `<i class="contrib-cell out"></i>`;
-      const count = counts.get(day.iso) || 0;
-      const level = contribLevel(count);
-      const title = count ? `${day.iso} · ${count}건` : day.iso;
-      if (standings.has(day.iso)) {
-        const href = `https://github.com/${REPO.owner}/${REPO.name}/blob/${REPO.branch}/${DATA.standingsFile(day.iso)}`;
-        return `<a class="contrib-cell lv${level}" href="${href}" target="_blank" rel="noreferrer" title="${escapeHtml(title)}"></a>`;
-      }
-      return `<i class="contrib-cell lv${level}" title="${escapeHtml(title)}"></i>`;
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+  const months = [3, 4, 5, 6, 7, 8, 9, 10];
+  const head = `<span class="contrib-corner"></span>${days.map((day) => `<span class="contrib-day">${day}</span>`).join("")}`;
+  const rows = months
+    .map((month) => {
+      const cells = days.map((day) => contribCell(monthDayIso(year, month, day), counts, standings)).join("");
+      return `<span class="contrib-month">${month}월</span>${cells}`;
     })
     .join("");
   const legend = [0, 1, 2, 3, 4].map((lv) => `<i class="contrib-cell lv${lv}"></i>`).join("");
   return `<div class="contrib">
-    <div class="contrib-scroll">
-      ${months}
-      <div class="contrib-body">
-        <div class="contrib-dows"><span></span><span>월</span><span></span><span>수</span><span></span><span>금</span><span></span></div>
-        <div class="contrib-grid">${cells}</div>
-      </div>
-    </div>
+    <div class="contrib-grid">${head}${rows}</div>
     <div class="contrib-legend"><span>적음</span>${legend}<span>많음</span></div>
   </div>`;
 }
