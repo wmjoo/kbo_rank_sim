@@ -1037,15 +1037,23 @@ function renderHistory() {
     el.innerHTML = `<p class="empty">${label}에 저장된 몬테카를로 결과가 없습니다.</p>`;
     return;
   }
-  const active = seasonDaily ? topRankIndexes(period[period.length - 1], 3) : ranksAtLeastOnePercent(period);
+  const seasonLg = view.kind === "range" && view.range === "season" && team === FOCUS_TEAM;
+  const active = (() => {
+    const base = seasonDaily ? topRankIndexes(period[period.length - 1], 3) : ranksAtLeastOnePercent(period);
+    if (!seasonLg) return base;
+    return [...new Set([...base, 0, 1, 2, 3])].sort((a, b) => a - b);
+  })();
   if (!active.length) {
     el.innerHTML = `<p class="empty">${escapeHtml(team)}은 이 기간에 1% 이상인 순위가 없습니다.</p>`;
     return;
   }
 
-  const W = 360;
-  const H = 310;
-  const pad = { l: 20, r: 12, t: 14, b: 16 };
+  const wide = window.matchMedia("(min-width: 720px)").matches;
+  const W = wide ? 960 : 360;
+  const H = wide ? 260 : 310;
+  const pad = wide ? { l: 40, r: 16, t: 16, b: 28 } : { l: 20, r: 12, t: 14, b: 16 };
+  const axisSize = wide ? 12 : 6;
+  const labelSize = wide ? 13 : 8;
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const xAt = (i) => pad.l + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
@@ -1055,7 +1063,7 @@ function renderHistory() {
     .map((v) => {
       const y = yAt(v);
       return `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#eadfd4" stroke-width="1"/>
-        <text x="${pad.l - 2}" y="${y + 2}" text-anchor="end" font-size="6" fill="#8a8175">${Math.round(v * 100)}</text>`;
+        <text x="${pad.l - 2}" y="${y + 2}" text-anchor="end" font-size="${axisSize}" fill="#8a8175">${Math.round(v * 100)}</text>`;
     })
     .join("");
   const lines = active
@@ -1112,7 +1120,7 @@ function renderHistory() {
         row.bucket === "month"
           ? `${Number(String(row.monthKey).slice(5, 7))}월`
           : String(row.bucket === "week" ? String(row.label).slice(0, 10) : row.asOf).slice(5).replace("-", "/");
-      return `<text x="${xAt(i).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="6" fill="#5c564c">${label}</text>`;
+      return `<text x="${xAt(i).toFixed(1)}" y="${H - 4}" text-anchor="middle" font-size="${axisSize}" fill="#5c564c">${label}</text>`;
     })
     .join("");
   const pointLabels = points
@@ -1151,12 +1159,12 @@ function renderHistory() {
       let prevY = -Infinity;
       return picked
         .map((item) => {
-          let y = yAt(item.p) - 7;
-          if (y < prevY + 8) y = prevY + 8;
-          if (y < 8) y = 8;
+          let y = yAt(item.p) - (wide ? 12 : 7);
+          if (y < prevY + labelSize) y = prevY + labelSize;
+          if (y < labelSize) y = labelSize;
           prevY = y;
           const emph = item.emph ? ` font-weight="700" text-decoration="underline"` : "";
-          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="8" fill="${RANK_COLORS[item.idx]}"${emph}>${(item.p * 100).toFixed(1)}%</text>`;
+          return `<text x="${xAt(i).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="${labelSize}" fill="${RANK_COLORS[item.idx]}"${emph}>${(item.p * 100).toFixed(1)}%</text>`;
         })
         .join("");
     })
@@ -1166,7 +1174,13 @@ function renderHistory() {
     .join("");
   const spanEnd = (row) => String(row.label || row.asOf).slice(-10);
   const spanStart = (row) => String(row.label || row.asOf).slice(0, 10);
-  const bucketLabel = seasonDaily ? "일별 · 7일 평균 · 상위 3순위" : bucket === "week" ? "주별 평균" : bucket === "month" ? "월별 평균" : "일별";
+  const bucketLabel = seasonDaily
+    ? `일별 · 7일 평균 · ${seasonLg ? "1–4위" : "상위 3순위"}`
+    : bucket === "week"
+      ? "주별 평균"
+      : bucket === "month"
+        ? "월별 평균"
+        : "일별";
   const caption = `${spanStart(points[0])} – ${spanEnd(points[points.length - 1])} · ${bucketLabel}`;
   el.innerHTML = `<p class="meta hist-caption">${escapeHtml(caption)}</p>
     <svg class="hist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(team)} ${bucketLabel} 순위 확률">
@@ -1824,6 +1838,13 @@ function bind() {
   });
   applyRangeDefaultBucket();
   $("hist-bucket")?.addEventListener("change", () => renderHistory());
+  let histWide = window.matchMedia("(min-width: 720px)").matches;
+  window.addEventListener("resize", () => {
+    const next = window.matchMedia("(min-width: 720px)").matches;
+    if (next === histWide) return;
+    histWide = next;
+    renderHistory();
+  });
   fillTeamSelect();
 
   const tab = location.hash.replace("#", "");
